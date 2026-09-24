@@ -12,10 +12,10 @@
     </parent>
 
     <groupId>com.superinter</groupId>
-    <artifactId>gestion-productos</artifactId>
+    <artifactId>super-inter-backend</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>Super Inter - Gestión de Productos</name>
-    <description>Módulo de gestión de productos del sistema Super Inter (Spring Boot + JDBC + PostgreSQL)</description>
+    <name>Super Inter - Backend</name>
+    <description>Backend del sistema de gestión integral Super Inter (Spring Boot + JDBC + PostgreSQL)</description>
 
     <properties>
         <java.version>21</java.version>
