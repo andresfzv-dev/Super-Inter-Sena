@@ -1,0 +1,20 @@
+# Compilados de Maven
+target/
+
+# Credenciales locales (nunca se suben)
+db.properties
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# Sistema operativo
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
