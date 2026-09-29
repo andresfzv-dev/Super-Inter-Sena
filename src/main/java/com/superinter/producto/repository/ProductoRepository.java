@@ -23,4 +23,6 @@ public interface ProductoRepository {
     boolean existePorCodigo(String codigo);
 
     boolean existePorCodigoEnOtroProducto(String codigo, int idProductoExcluido);
+
+    List<Producto> buscar(String nombre, Integer idCategoria);
 }
