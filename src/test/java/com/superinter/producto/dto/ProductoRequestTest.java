@@ -63,4 +63,13 @@ class ProductoRequestTest {
                 .map(violacion -> violacion.getPropertyPath().toString())
                 .collect(Collectors.toSet());
     }
+
+    @Test
+    void losTextosSeRecortanAlCrearLaSolicitud() {
+        ProductoRequest solicitud = new ProductoRequest(
+                "  7701234567890 ", " Arroz Diana 1kg  ", PRECIO_VALIDO, STOCK_VALIDO, null, 1);
+
+        assertThat(solicitud.codigo()).isEqualTo("7701234567890");
+        assertThat(solicitud.nombre()).isEqualTo("Arroz Diana 1kg");
+    }
 }
