@@ -112,4 +112,12 @@ class ProductoServiceTest {
     private ProductoRequest crearSolicitud(String codigo, int idCategoria) {
         return new ProductoRequest(codigo, "Arroz Diana 1kg", new BigDecimal("4500.00"), 20, null, idCategoria);
     }
+
+    @Test
+    void buscarFiltraPorNombreSinDistinguirMayusculas() {
+        productoService.registrar(crearSolicitud("770-001", ID_ABARROTES));
+
+        assertThat(productoService.buscar("ARROZ", null)).hasSize(1);
+        assertThat(productoService.buscar("leche", null)).isEmpty();
+    }
 }

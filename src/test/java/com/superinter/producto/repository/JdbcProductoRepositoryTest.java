@@ -8,6 +8,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.time.LocalDate;
+import java.util.List;
 
 import javax.sql.DataSource;
 
@@ -153,5 +154,26 @@ class JdbcProductoRepositoryTest {
              PreparedStatement statement = connection.prepareStatement(SQL_LIMPIAR_DATOS_DE_PRUEBA)) {
             statement.executeUpdate();
         }
+    }
+
+    @Test
+    void buscarPorNombreNoDistingueMayusculasNiRequiereElNombreCompleto() {
+        productoRepository.guardar(crearProducto("008"));
+
+        assertThat(productoRepository.buscar("arroz DIANA", null))
+                .extracting(Producto::getCodigo)
+                .contains(PREFIJO_CODIGO + "008");
+    }
+
+    @Test
+    void buscarPorCategoriaSoloDevuelveProductosDeEsaCategoria() {
+        productoRepository.guardar(crearProducto("009"));
+
+        List<Producto> resultado = productoRepository.buscar(null, categoria.getIdCategoria());
+
+        assertThat(resultado)
+                .isNotEmpty()
+                .allSatisfy(producto ->
+                        assertThat(producto.getCategoria().getIdCategoria()).isEqualTo(categoria.getIdCategoria()));
     }
 }

@@ -54,4 +54,14 @@ public class ProductoRepositoryEnMemoria implements ProductoRepository {
                 .anyMatch(producto -> producto.getCodigo().equals(codigo)
                         && producto.getIdProducto() != idProductoExcluido);
     }
+
+    @Override
+    public List<Producto> buscar(String nombre, Integer idCategoria) {
+        return productos.values().stream()
+                .filter(producto -> nombre == null || nombre.isBlank()
+                        || producto.getNombre().toLowerCase().contains(nombre.strip().toLowerCase()))
+                .filter(producto -> idCategoria == null
+                        || producto.getCategoria().getIdCategoria().equals(idCategoria))
+                .toList();
+    }
 }
