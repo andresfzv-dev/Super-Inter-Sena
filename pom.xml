@@ -14,6 +14,7 @@
     <groupId>com.superinter</groupId>
     <artifactId>super-inter-backend</artifactId>
     <version>0.0.1-SNAPSHOT</version>
+    <packaging>war</packaging>
     <name>Super Inter - Backend</name>
     <description>Backend del sistema de gestión integral Super Inter (Spring Boot + JDBC + PostgreSQL)</description>
 
@@ -45,6 +46,22 @@
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
+        </dependency>
+
+        <!-- Motor de JSP para Tomcat embebido -->
+        <dependency>
+            <groupId>org.apache.tomcat.embed</groupId>
+            <artifactId>tomcat-embed-jasper</artifactId>
+        </dependency>
+
+        <!-- JSTL (Jakarta Standard Tag Library): API e implementación -->
+        <dependency>
+            <groupId>jakarta.servlet.jsp.jstl</groupId>
+            <artifactId>jakarta.servlet.jsp.jstl-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.glassfish.web</groupId>
+            <artifactId>jakarta.servlet.jsp.jstl</artifactId>
         </dependency>
 
         <!-- Generación de código repetitivo en compilación -->
