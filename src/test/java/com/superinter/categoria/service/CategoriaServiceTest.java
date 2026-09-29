@@ -8,17 +8,18 @@ import java.util.Optional;
 
 import com.superinter.categoria.domain.Categoria;
 import com.superinter.categoria.dto.CategoriaResponse;
-import com.superinter.categoria.repository.CategoriaRepository;
+import com.superinter.categoria.repository.CategoriaRepositoryEnMemoria;
 import com.superinter.common.exception.RecursoNoEncontradoException;
 import org.junit.jupiter.api.Test;
 
 class CategoriaServiceTest {
 
+    private final CategoriaService categoriaService =
+            new CategoriaService(new CategoriaRepositoryEnMemoria(List.of(ABARROTES)));
+
     private static final Categoria ABARROTES =
             Categoria.builder().idCategoria(1).nombre("Abarrotes").build();
 
-    private final CategoriaService categoriaService =
-            new CategoriaService(new CategoriaRepositoryFalso(List.of(ABARROTES)));
 
     @Test
     void listarTodasConvierteLasCategoriasEnRespuestas() {
@@ -41,21 +42,5 @@ class CategoriaServiceTest {
                 .hasMessage("Categoría con id 99 no existe");
     }
 
-    /**
-     * Implementación en memoria del repositorio para probar el servicio sin base de datos.
-     */
-    private record CategoriaRepositoryFalso(List<Categoria> categorias) implements CategoriaRepository {
 
-        @Override
-        public List<Categoria> listarTodas() {
-            return categorias;
-        }
-
-        @Override
-        public Optional<Categoria> buscarPorId(int idCategoria) {
-            return categorias.stream()
-                    .filter(categoria -> categoria.getIdCategoria() == idCategoria)
-                    .findFirst();
-        }
-    }
 }

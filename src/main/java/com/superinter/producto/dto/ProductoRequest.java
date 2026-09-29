@@ -41,14 +41,27 @@ public record ProductoRequest(
         @Positive(message = "La categoría debe ser un identificador válido")
         Integer idCategoria) {
 
+    /**
+     * Constructor compacto: elimina los espacios al inicio y al final de los textos
+     * para que " 770 " y "770" se consideren el mismo código.
+     */
+    public ProductoRequest {
+        codigo = recortar(codigo);
+        nombre = recortar(nombre);
+    }
+
     public Producto aProducto(Categoria categoria) {
         return Producto.builder()
-                .codigo(codigo.strip())
-                .nombre(nombre.strip())
+                .codigo(codigo)
+                .nombre(nombre)
                 .precio(precio)
                 .stock(stock)
                 .fechaVencimiento(fechaVencimiento)
                 .categoria(categoria)
                 .build();
+    }
+
+    private static String recortar(String valor) {
+        return valor == null ? null : valor.strip();
     }
 }
