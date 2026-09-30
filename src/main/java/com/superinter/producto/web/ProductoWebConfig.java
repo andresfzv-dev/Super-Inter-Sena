@@ -29,4 +29,11 @@ public class ProductoWebConfig {
                 ProductoFormularioServlet.RUTA_NUEVO,
                 ProductoFormularioServlet.RUTA_EDITAR);
     }
+
+    @Bean
+    public ServletRegistrationBean<ProductoEliminarServlet> productoEliminarServlet(
+            ProductoService productoService) {
+        return new ServletRegistrationBean<>(
+                new ProductoEliminarServlet(productoService), ProductoEliminarServlet.RUTA);
+    }
 }
