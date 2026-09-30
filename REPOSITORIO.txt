@@ -1,5 +1,8 @@
-Evidencia GA7-220501096-AA2-EV01 - Codificación de módulos del software
+Evidencia GA7-220501096-AA2-EV02 - Módulos de software codificados y probados
 Aprendiz: Andrés Felipe Zambrano Velasquez
 
 Repositorio del proyecto:
 https://github.com/andresfzv-dev/Super-Inter-Sena
+
+Versión entregada: v2.0.0
+(La versión v1.0.0 corresponde a la evidencia GA7-220501096-AA2-EV01)
