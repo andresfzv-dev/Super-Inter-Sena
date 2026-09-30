@@ -1,0 +1,61 @@
+/* =========================================================
+   Super Inter — Comportamiento responsivo
+   ========================================================= */
+
+@media (max-width: 1024px) {
+  .app-shell {
+    grid-template-columns: var(--sidebar-width-collapsed) 1fr;
+  }
+  .sidebar__brand-text,
+  .sidebar__group-label,
+  .sidebar__link span:not(.sidebar__link-icon),
+  .app-header__user-info {
+    display: none;
+  }
+  .sidebar__link { justify-content: center; }
+}
+
+@media (max-width: 768px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "header"
+      "main"
+      "footer";
+  }
+  .sidebar {
+    position: fixed;
+    left: 0; top: 0;
+    width: var(--sidebar-width);
+    transform: translateX(-100%);
+  }
+  .sidebar.is-open { transform: translateX(0); }
+  .sidebar__brand-text,
+  .sidebar__group-label,
+  .sidebar__link span:not(.sidebar__link-icon) { display: block; }
+  .sidebar__link { justify-content: flex-start; }
+
+  .app-header__menu-toggle {
+    display: inline-flex;
+  }
+
+  .app-main { padding: var(--space-4); }
+
+  .auth-shell { grid-template-columns: 1fr; }
+  .auth-side { display: none; }
+  .auth-panel { padding: var(--space-5); }
+
+  .card__body, .card__header, .card__footer { padding: var(--space-4); }
+
+  .form-row { grid-template-columns: 1fr; }
+
+  .table-toolbar { flex-direction: column; align-items: stretch; }
+  .table-toolbar__filters .form-control,
+  .search-field { max-width: none; width: 100%; }
+}
+
+@media (max-width: 480px) {
+  .stat-grid { grid-template-columns: 1fr; }
+  .page-heading { flex-direction: column; align-items: stretch; }
+  .page-heading .btn { width: 100%; }
+}

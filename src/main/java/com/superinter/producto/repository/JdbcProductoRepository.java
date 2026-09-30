@@ -39,7 +39,7 @@ public class JdbcProductoRepository implements ProductoRepository {
             JOIN categorias c ON c.id_categoria = p.id_categoria
             """;
 
-    private static final String SQL_LISTAR_TODOS = SQL_SELECCION_BASE + "ORDER BY p.nombre";
+    private static final String SQL_ORDEN = " ORDER BY p.nombre";
 
     private static final String SQL_BUSCAR_POR_ID = SQL_SELECCION_BASE + "WHERE p.id_producto = ?";
 
@@ -86,18 +86,42 @@ public class JdbcProductoRepository implements ProductoRepository {
 
     @Override
     public List<Producto> listarTodos() {
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(SQL_LISTAR_TODOS);
-             ResultSet resultSet = statement.executeQuery()) {
+        return buscar(null, null);
+    }
 
-            List<Producto> productos = new ArrayList<>();
-            while (resultSet.next()) {
-                productos.add(mapearProducto(resultSet));
+    @Override
+    public List<Producto> buscar(String nombre, Integer idCategoria) {
+        List<String> condiciones = new ArrayList<>();
+        List<Object> parametros = new ArrayList<>();
+
+        if (nombre != null && !nombre.isBlank()) {
+            condiciones.add("p.nombre ILIKE ?");
+            parametros.add("%" + nombre.strip() + "%");
+        }
+        if (idCategoria != null) {
+            condiciones.add("p.id_categoria = ?");
+            parametros.add(idCategoria);
+        }
+
+        String sql = SQL_SELECCION_BASE
+                + (condiciones.isEmpty() ? "" : "WHERE " + String.join(" AND ", condiciones))
+                + SQL_ORDEN;
+
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+
+            asignarParametros(statement, parametros.toArray());
+
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<Producto> productos = new ArrayList<>();
+                while (resultSet.next()) {
+                    productos.add(mapearProducto(resultSet));
+                }
+                return productos;
             }
-            return productos;
 
         } catch (SQLException excepcion) {
-            throw new AccesoDatosException("Error al listar los productos", excepcion);
+            throw new AccesoDatosException("Error al consultar los productos", excepcion);
         }
     }
 
@@ -185,13 +209,17 @@ public class JdbcProductoRepository implements ProductoRepository {
         }
     }
 
+    private void asignarParametros(PreparedStatement statement, Object... parametros) throws SQLException {
+        for (int indice = 0; indice < parametros.length; indice++) {
+            statement.setObject(indice + 1, parametros[indice]);
+        }
+    }
+
     private boolean consultarExistencia(String sql, Object... parametros) {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
 
-            for (int indice = 0; indice < parametros.length; indice++) {
-                statement.setObject(indice + 1, parametros[indice]);
-            }
+            asignarParametros(statement, parametros);
 
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() && resultSet.getBoolean(1);

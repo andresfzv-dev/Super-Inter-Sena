@@ -77,4 +77,10 @@ public class ProductoService {
     private ConflictoException codigoDuplicado(String codigo) {
         return new ConflictoException("Ya existe un producto con el código " + codigo);
     }
+
+    public List<ProductoResponse> buscar(String nombre, Integer idCategoria) {
+        return productoRepository.buscar(nombre, idCategoria).stream()
+                .map(ProductoResponse::desde)
+                .toList();
+    }
 }

@@ -1,4 +1,4 @@
-package com.superinter.repository;
+package com.superinter.categoria.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Optional;
 
 import com.superinter.categoria.domain.Categoria;
-import com.superinter.categoria.repository.CategoriaRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
