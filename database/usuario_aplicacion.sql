@@ -17,3 +17,8 @@ GRANT USAGE ON SEQUENCE productos_id_producto_seq TO super_inter_app;
 
 -- Categorías: solo lectura
 GRANT SELECT ON categorias TO super_inter_app;
+
+
+-- Módulo de proveedores: CRUD completo (migración 002)
+GRANT SELECT, INSERT, UPDATE, DELETE ON proveedores TO super_inter_app;
+GRANT USAGE ON SEQUENCE proveedores_id_proveedor_seq TO super_inter_app;
