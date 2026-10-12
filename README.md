@@ -1,6 +1,6 @@
 # Super Inter – Backend
 
-Módulo de **gestión de productos** del Sistema de Gestión Integral para el supermercado Super Inter.
+Módulos de **gestión de productos** y **gestión de proveedores** del Sistema de Gestión Integral para el supermercado Super Inter.
 
 **Aprendiz:** Andrés Felipe Zambrano Velasquez
 **Programa:** Análisis y Desarrollo de Software (ADSO) – SENA, ficha 3336098
@@ -9,18 +9,21 @@ Módulo de **gestión de productos** del Sistema de Gestión Integral para el su
 |---|---|---|
 | GA7-220501096-AA2-EV01 – Codificación de módulos del software | CRUD de productos con JDBC y API REST | `v1.0.0` |
 | GA7-220501096-AA2-EV02 – Módulos de software codificados y probados | Módulo web con servlets, formularios HTML y JSP | `v2.0.0` |
+| GA7-220501096-AA3-EV01 – Codificación de módulos del software stand-alone, web y móvil | Módulo web de gestión de proveedores | `v3.0.0` |
 
 ## Descripción
 
-Aplicación que implementa la inserción, consulta, actualización y eliminación de productos del inventario, con dos interfaces que comparten la misma lógica de negocio y el mismo acceso a datos por **JDBC**:
+Aplicación web que implementa el registro, consulta, actualización y eliminación de dos módulos, con acceso a datos por **JDBC**:
 
-- **Interfaz web** con servlets, formularios HTML y JSP (EV02).
-- **API REST** en formato JSON (EV01).
+| Módulo | Interfaz web (servlets y JSP) | API REST |
+|---|---|---|
+| Productos | Sí (AA2-EV02) | Sí (AA2-EV01) |
+| Proveedores | Sí (AA3-EV01) | No |
 
 ```
 Navegador (formularios HTML)        Cliente HTTP (curl, frontend)
             │                                   │
-   Servlets + JSP (EV02)            Controladores REST (EV01)
+       Servlets + JSP               Controladores REST (productos)
             └────────────────┬──────────────────┘
                      Servicios (reglas de negocio)
                              │
@@ -28,6 +31,8 @@ Navegador (formularios HTML)        Cliente HTTP (curl, frontend)
                              │
                         PostgreSQL
 ```
+
+Los servicios no dependen de servlets ni de JSP. La interfaz web actual y una futura API REST o front-end usan la misma lógica de negocio.
 
 ## Tecnologías
 
@@ -45,7 +50,7 @@ Navegador (formularios HTML)        Cliente HTTP (curl, frontend)
 | Lombok | Reducción de código repetitivo |
 | Git y GitHub | Control de versiones |
 
-## Módulo web (EV02)
+## Módulo web de productos (AA2-EV02)
 
 ### Pantallas, métodos HTTP y servlets
 
@@ -91,22 +96,76 @@ Las JSP están en `src/main/webapp/WEB-INF/jsp`, donde no se pueden solicitar di
 
 Los datos de un formulario HTML llegan como texto. `ProductoFormulario` los convierte a sus tipos (número, fecha) y registra los errores de formato. Luego se aplican las mismas validaciones de la API REST (`ProductoRequest`) y las reglas de negocio del servicio. Si hay errores, el formulario se muestra de nuevo con lo que escribió el usuario y un mensaje junto a cada campo.
 
+## Módulo de proveedores (AA3-EV01)
+
+Implementa la gestión de proveedores: registro, consulta con búsqueda por nombre, edición y eliminación. Sigue la misma arquitectura y las mismas convenciones del módulo de productos.
+
+### Pantallas, métodos HTTP y servlets
+
+| Pantalla | Método | URL | Servlet |
+|---|---|---|---|
+| Listado con búsqueda | GET | `/proveedores?nombre=...` | `ProveedorListaServlet` |
+| Formulario de registro | GET | `/proveedores/nuevo` | `ProveedorFormularioServlet` |
+| Guardar registro | POST | `/proveedores/nuevo` | `ProveedorFormularioServlet` |
+| Formulario de edición | GET | `/proveedores/editar?id=N` | `ProveedorFormularioServlet` |
+| Guardar edición | POST | `/proveedores/editar` | `ProveedorFormularioServlet` |
+| Confirmar eliminación | GET | `/proveedores/eliminar?id=N` | `ProveedorEliminarServlet` |
+| Eliminar | POST | `/proveedores/eliminar` | `ProveedorEliminarServlet` |
+
+Se aplican las mismas reglas del módulo web de productos: GET solo consulta, POST modifica, eliminación en dos pasos y patrón Post/Redirect/Get. El mensaje de éxito viaja como un código (`?mensaje=creado`) y el servlet lo traduce al texto, así que no se puede inyectar contenido en la página desde la URL.
+
+### Datos y validaciones
+
+| Campo | Obligatorio | Validación |
+|---|---|---|
+| Nombre | Sí | Máximo 100 caracteres, no puede estar en blanco, único sin distinguir mayúsculas |
+| Contacto | No | Máximo 100 caracteres |
+| Teléfono | No | 7 a 20 caracteres: dígitos, espacios, `+`, `-`, `(` y `)` |
+| Correo | No | Máximo 254 caracteres, formato de correo |
+
+- `ProveedorRequest` concentra las validaciones (Jakarta Bean Validation). Quita los espacios del nombre y convierte los campos opcionales vacíos en `null`, para que la base de datos no guarde cadenas vacías.
+- **Nombre único:** `ProveedorService` lo verifica antes de guardar y la base de datos lo garantiza con el índice `uq_proveedores_nombre` sobre `lower(nombre)`. Si dos registros simultáneos pasan la verificación, el código SQLSTATE `23505` se traduce al mismo mensaje de conflicto.
+- **Eliminación de un proveedor con compras:** la llave foránea `fk_compra_proveedor` la impide. El código `23503` se traduce a un mensaje que explica por qué no se puede eliminar.
+
+### Cambios en la base de datos
+
+`database/migrations/002_modulo_proveedores.sql`:
+
+- Agrega la columna `correo VARCHAR(254)`. 254 es la longitud máxima de una dirección de correo (RFC 5321).
+- Agrega la restricción `chk_proveedores_nombre`, que rechaza nombres formados solo por espacios.
+- Crea el índice único `uq_proveedores_nombre` sobre `lower(nombre)`.
+- Otorga a `super_inter_app` los permisos `SELECT`, `INSERT`, `UPDATE` y `DELETE` sobre `proveedores` y `USAGE` sobre su secuencia. Los mismos permisos se agregaron a `database/usuario_aplicacion.sql` para instalaciones nuevas.
+
+`database/schema.sql` se regeneró y ya incluye estos cambios.
+
+### Comentarios en el código
+
+Los comentarios explican **por qué** se tomó una decisión, no qué hace cada línea. Por ejemplo:
+
+- La Javadoc de cada clase indica su responsabilidad y el requisito que atiende.
+- Los métodos de `ProveedorRepository` documentan su contrato: qué devuelven cuando el registro no existe y qué excepción lanzan.
+- En `ProveedorService` se explica el orden de las verificaciones (primero el 404 y luego el nombre duplicado) y el caso de un proveedor eliminado por otro usuario entre la verificación y la actualización.
+- La migración 002 explica el uso de un índice sobre `lower(nombre)` en lugar de una restricción `UNIQUE`, y por qué no se otorgan permisos sobre `compras`.
+
 ## Uso de JDBC
 
-El proyecto **no usa JPA ni Hibernate**. Todas las operaciones SQL están escritas a mano con la API estándar de JDBC en `JdbcProductoRepository` y `JdbcCategoriaRepository`. Spring Boot solo administra el pool de conexiones (`DataSource`).
+El proyecto **no usa JPA ni Hibernate**. Todas las operaciones SQL están escritas a mano con la API estándar de JDBC en `JdbcProductoRepository`, `JdbcCategoriaRepository` y `JdbcProveedorRepository`. Spring Boot solo administra el pool de conexiones (`DataSource`).
 
 | Operación | Método | Sentencia | API JDBC |
 |---|---|---|---|
 | Inserción | `guardar` | `INSERT` | `executeUpdate()` y `getGeneratedKeys()` |
-| Consulta | `listarTodos`, `buscar`, `buscarPorId` | `SELECT ... JOIN` | `executeQuery()` y `ResultSet` |
+| Consulta | `listarTodos`, `buscar`, `buscarPorId`, `existePorNombre` | `SELECT` | `executeQuery()` y `ResultSet` |
 | Actualización | `actualizar` | `UPDATE` | `executeUpdate()` |
 | Eliminación | `eliminarPorId` | `DELETE` | `executeUpdate()` |
 
 - `PreparedStatement` con parámetros `?` en todas las consultas, incluida la búsqueda con filtros opcionales, lo que previene la inyección SQL.
+- Los campos opcionales se guardan con `setNull(..., Types.VARCHAR)` cuando no tienen valor.
 - `try-with-resources` para cerrar `Connection`, `PreparedStatement` y `ResultSet`.
 - Los códigos SQLSTATE `23505` (valor duplicado) y `23503` (llave foránea) se traducen a errores de conflicto.
 
 ## Trazabilidad con los artefactos del proyecto
+
+### Módulo de productos
 
 | Artefacto | Aplicación |
 |---|---|
@@ -119,12 +178,27 @@ El proyecto **no usa JPA ni Hibernate**. Todas las operaciones SQL están escrit
 | Diseño front-end (GA6-220501096-AA4-EV03) | Hojas de estilo, paleta de colores y estructura de las pantallas de productos |
 | Entorno operativo: aplicación web cliente-servidor | Servlets y JSP sobre Tomcat |
 
+### Módulo de proveedores
+
+| Artefacto | Aplicación |
+|---|---|
+| RF-04 (gestionar proveedores: crear, editar y consultar) | Listado, formulario de registro y de edición, `ProveedorService` |
+| RF-15 (información de contacto del proveedor) | Campos contacto, teléfono y correo |
+| Modelo lógico (GA4-220501095-AA1-EV01) | Tabla `proveedores` y su relación con `compras` |
+| Diagrama de clases (GA4-220501095-AA2-EV04) | Entidad `Proveedor` |
+| Historia de usuario HU2 | Depende de que existan proveedores registrados |
+| Diseño front-end (GA6-220501096-AA4-EV03) | Estructura de la pantalla `suppliers/list.html`, estilos y opción del menú |
+
 ### Ajustes justificados
 
 - **Columna `codigo`:** RF-01 y la regla de negocio 1 exigen un código único que el modelo lógico no incluía. Se agregó con restricción `UNIQUE` (`database/migrations/001_ajustes_modulo_productos.sql`).
 - **Precio como `NUMERIC(12,2)` / `BigDecimal`:** el diagrama de clases usa `double`, que produce errores de redondeo con valores monetarios.
 - **Campos del prototipo de front-end:** el prototipo incluía descripción, proveedor, unidad, costo, stock mínimo y estado, que no existen en el modelo lógico. Las pantallas web conservan el diseño del prototipo con los campos del modelo de datos, y agregan código y fecha de vencimiento (RF-01).
 - **Menú, encabezado y pie:** en el prototipo se generaban con JavaScript. En el módulo web se generan en el servidor con `<jsp:include>`. El menú muestra solo los módulos implementados.
+- **Correo del proveedor:** no estaba en el modelo lógico. Se agregó como campo opcional para completar la información de contacto (RF-15).
+- **Nombre de proveedor único:** el modelo lógico no lo exigía. Se agregó para evitar registros duplicados del mismo proveedor, sin distinguir mayúsculas.
+- **Eliminación de proveedores:** RF-04 y el diagrama de clases solo indican crear, editar y consultar. Se agregó la eliminación para completar el CRUD; la base de datos impide eliminar un proveedor con compras registradas.
+- **NIT y estado del prototipo:** la pantalla de proveedores del prototipo los mostraba, pero no existen en el modelo lógico. No se incluyeron.
 
 ## Estructura del proyecto
 
@@ -136,14 +210,18 @@ src/main/java/com/superinter/
 │   └── web/                 Utilidades comunes de los servlets
 ├── categoria/               Módulo de categorías (solo lectura)
 │   ├── domain/  repository/  dto/  service/  controller/
-└── producto/                Módulo de productos
+├── producto/                Módulo de productos
+│   ├── domain/  repository/  dto/  service/
+│   ├── controller/          API REST (AA2-EV01)
+│   └── web/                 Servlets y modelo del formulario (AA2-EV02)
+└── proveedor/               Módulo de proveedores (AA3-EV01)
     ├── domain/  repository/  dto/  service/
-    ├── controller/          API REST (EV01)
-    └── web/                 Servlets y modelo del formulario (EV02)
+    └── web/                 Servlets
 
 src/main/webapp/WEB-INF/jsp/
 ├── fragmentos/              head, sidebar, header y footer compartidos
-└── productos/               lista, formulario y confirmar-eliminacion
+├── productos/               lista, formulario y confirmar-eliminacion
+└── proveedores/             lista, formulario y confirmar-eliminacion
 
 src/main/resources/static/
 ├── css/                     Estilos del prototipo de front-end
@@ -166,9 +244,17 @@ database/
 | Paquetes | minúsculas, por módulo y capa | `com.superinter.producto.web` |
 | JSP | minúsculas con guiones | `confirmar-eliminacion.jsp` |
 
-Los conceptos del negocio se nombran en español (`Producto`, `Categoria`) y el rol técnico en inglés como sufijo (`Repository`, `Service`, `Controller`, `Servlet`, `Request`, `Response`, `Exception`).
+Los conceptos del negocio se nombran en español (`Producto`, `Categoria`, `Proveedor`) y el rol técnico en inglés como sufijo (`Repository`, `Service`, `Controller`, `Servlet`, `Request`, `Response`, `Exception`).
 
-Los commits siguen **Conventional Commits** y cada funcionalidad se integró a `main` mediante una rama y un Pull Request.
+Cada módulo se organiza por capas (`domain`, `repository`, `dto`, `service`, `web`). Un módulo usa el servicio de otro módulo, nunca su repositorio. Las dependencias se inyectan por constructor.
+
+## Control de versiones
+
+- Los commits siguen **Conventional Commits** en español (`feat(proveedor): ...`, `test(proveedor): ...`, `fix(proveedor): ...`).
+- Cada funcionalidad se desarrolla en una rama (`feat/modulo-proveedores`) y se integra a `main` mediante un Pull Request con merge commit.
+- Cada evidencia entregada se marca con una etiqueta de versión (`v1.0.0`, `v2.0.0`, `v3.0.0`).
+- Los cambios en la base de datos se registran como migraciones numeradas. Una migración aplicada no se modifica.
+- El archivo `.env` con las credenciales está excluido del repositorio; `.env.example` sirve de plantilla.
 
 ## Requisitos
 
@@ -220,10 +306,11 @@ El archivo `.env` está excluido del repositorio.
 ./mvnw spring-boot:run
 ```
 
-- **Interfaz web:** http://localhost:8080/productos
+- **Productos:** http://localhost:8080/productos
+- **Proveedores:** http://localhost:8080/proveedores
 - **API REST:** http://localhost:8080/api/productos
 
-## API REST (EV01)
+## API REST de productos (AA2-EV01)
 
 | Método | Ruta | Operación | Respuesta |
 |---|---|---|---|
@@ -248,14 +335,14 @@ curl -i -X POST http://localhost:8080/api/productos \
 ./mvnw clean test
 ```
 
-57 pruebas automatizadas:
+104 pruebas automatizadas, 47 de ellas del módulo de proveedores:
 
 | Tipo | Qué verifica | Requiere BD |
 |---|---|---|
-| Unitarias de servlets | GET y POST de los tres servlets con `MockHttpServletRequest`: vistas, redirecciones, códigos HTTP, errores de validación y de negocio | No |
+| Unitarias de servlets | GET y POST de los servlets de productos y proveedores con `MockHttpServletRequest`: vistas, redirecciones, códigos HTTP, errores de validación y de negocio | No |
 | Integración web | La aplicación completa con Tomcat: generación de las JSP y registro desde el formulario hasta PostgreSQL | Sí |
-| Unitarias de servicios y validaciones | Reglas de negocio, validaciones de la solicitud y manejo de errores de la API | No |
-| Integración de repositorios | Operaciones JDBC contra PostgreSQL | Sí |
+| Unitarias de servicios y validaciones | Reglas de negocio, validaciones de la solicitud y manejo de errores de la API. Los servicios se prueban con repositorios en memoria | No |
+| Integración de repositorios | Operaciones JDBC contra PostgreSQL, incluidas las restricciones de nombre único | Sí |
 
 Los datos de prueba usan el prefijo `TEST-` y se eliminan al terminar.
 
