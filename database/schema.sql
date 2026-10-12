@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict IsUCoNpvHK06y1c1cRf8Z48SsavcbbWsUP2JKO8rMxQ5adKitaaOV7lPz9Pi5L3
+\restrict H8nZYc6qUfOzGjMrp71pKCduqTOekn8IhHd1d7VZzavALosaJUO7ZCUvYo6oLCS
 
 -- Dumped from database version 16.15
 -- Dumped by pg_dump version 16.15
@@ -199,7 +199,9 @@ CREATE TABLE public.proveedores (
     id_proveedor integer NOT NULL,
     nombre character varying(100) NOT NULL,
     contacto character varying(100),
-    telefono character varying(20)
+    telefono character varying(20),
+    correo character varying(254),
+    CONSTRAINT chk_proveedores_nombre CHECK ((btrim((nombre)::text) <> ''::text))
 );
 
 
@@ -439,6 +441,13 @@ CREATE INDEX idx_productos_id_categoria ON public.productos USING btree (id_cate
 
 
 --
+-- Name: uq_proveedores_nombre; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_proveedores_nombre ON public.proveedores USING btree (lower((nombre)::text));
+
+
+--
 -- Name: compras fk_compra_proveedor; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -498,5 +507,5 @@ ALTER TABLE ONLY public.ventas
 -- PostgreSQL database dump complete
 --
 
-\unrestrict IsUCoNpvHK06y1c1cRf8Z48SsavcbbWsUP2JKO8rMxQ5adKitaaOV7lPz9Pi5L3
+\unrestrict H8nZYc6qUfOzGjMrp71pKCduqTOekn8IhHd1d7VZzavALosaJUO7ZCUvYo6oLCS
 
