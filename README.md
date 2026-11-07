@@ -1,6 +1,6 @@
-# Super Inter – Backend
+# Super Inter
 
-Módulos de **gestión de productos** y **gestión de proveedores** del Sistema de Gestión Integral para el supermercado Super Inter.
+Módulos de **gestión de productos** y **gestión de proveedores** del Sistema de Gestión Integral para el supermercado Super Inter, con un front-end en React para el módulo de productos.
 
 **Aprendiz:** Andrés Felipe Zambrano Velasquez
 **Programa:** Análisis y Desarrollo de Software (ADSO) – SENA, ficha 3336098
@@ -10,15 +10,16 @@ Módulos de **gestión de productos** y **gestión de proveedores** del Sistema 
 | GA7-220501096-AA2-EV01 – Codificación de módulos del software | CRUD de productos con JDBC y API REST | `v1.0.0` |
 | GA7-220501096-AA2-EV02 – Módulos de software codificados y probados | Módulo web con servlets, formularios HTML y JSP | `v2.0.0` |
 | GA7-220501096-AA3-EV01 – Codificación de módulos del software stand-alone, web y móvil | Módulo web de gestión de proveedores | `v3.0.0` |
+| GA7-220501096-AA4-EV03 – Componente front-end del proyecto formativo y proyectos de clase | Front-end en React del módulo de productos | `v4.0.0` |
 
 ## Descripción
 
 Aplicación web que implementa el registro, consulta, actualización y eliminación de dos módulos, con acceso a datos por **JDBC**:
 
-| Módulo | Interfaz web (servlets y JSP) | API REST |
-|---|---|---|
-| Productos | Sí (AA2-EV02) | Sí (AA2-EV01) |
-| Proveedores | Sí (AA3-EV01) | No |
+| Módulo | Interfaz web (servlets y JSP) | API REST | Front-end en React |
+|---|---|---|---|
+| Productos | Sí (AA2-EV02) | Sí (AA2-EV01) | Sí (AA4-EV03) |
+| Proveedores | Sí (AA3-EV01) | No | No |
 
 ```
 Navegador (formularios HTML)        Cliente HTTP (curl, frontend)
@@ -49,6 +50,10 @@ Los servicios no dependen de servlets ni de JSP. La interfaz web actual y una fu
 | JUnit 5 y AssertJ | Pruebas |
 | Lombok | Reducción de código repetitivo |
 | Git y GitHub | Control de versiones |
+| React 19 y React Router | Front-end del módulo de productos (SPA) |
+| Vite | Servidor de desarrollo, proxy hacia la API y compilación del front-end |
+| ESLint y Prettier | Estándares de codificación y formato del front-end |
+| Vitest y Testing Library | Pruebas del front-end |
 
 ## Módulo web de productos (AA2-EV02)
 
@@ -147,6 +152,98 @@ Los comentarios explican **por qué** se tomó una decisión, no qué hace cada 
 - En `ProveedorService` se explica el orden de las verificaciones (primero el 404 y luego el nombre duplicado) y el caso de un proveedor eliminado por otro usuario entre la verificación y la actualización.
 - La migración 002 explica el uso de un índice sobre `lower(nombre)` en lugar de una restricción `UNIQUE`, y por qué no se otorgan permisos sobre `compras`.
 
+## Front-end en React (AA4-EV03)
+
+Aplicación de una sola página (SPA) en `frontend/` que implementa el módulo de productos consumiendo la API REST de AA2-EV01. El backend no se modificó.
+
+### Arquitectura
+
+```
+Navegador (React)  ──fetch /api──▶  Vite (proxy)  ──▶  Spring Boot (API REST)  ──▶  PostgreSQL
+ localhost:5173                                         localhost:8080
+```
+
+- **SPA + API REST:** React dibuja las pantallas en el navegador y solo intercambia JSON con el backend. Las rutas (`/productos`, `/productos/nuevo`...) las resuelve React Router sin pedir páginas al servidor.
+- **Proxy de Vite:** el servidor de desarrollo reenvía `/api` a `http://localhost:8080`. El navegador habla con un solo origen, así que el backend no necesita configuración CORS.
+- **Cliente HTTP central** (`src/api/clienteHttp.js`): todas las peticiones pasan por `solicitar()`, que agrega los encabezados JSON y convierte las respuestas de error en `ErrorApi`. Los servicios `productosApi` y `categoriasApi` solo definen rutas y métodos.
+- **Organización por funcionalidad:** `features/productos/` agrupa las páginas, los componentes, la validación y el filtrado del módulo. `components/` contiene la estructura (menú, encabezado, pie) y los componentes reutilizables (`Alerta`, `CampoFormulario`, `ModalConfirmacion`).
+
+### Ejecución
+
+Se necesitan dos terminales:
+
+```bash
+# Terminal 1, en la raíz: backend
+./mvnw spring-boot:run
+
+# Terminal 2: front-end (Node.js 24 LTS)
+cd frontend
+npm install
+npm run dev
+```
+
+El front-end queda en http://localhost:5173. El detalle de comandos y estructura está en [`frontend/README.md`](frontend/README.md).
+
+### Pantallas y rutas
+
+| Ruta | Pantalla | Operaciones de la API |
+|---|---|---|
+| `/` | Redirige a `/productos` | — |
+| `/productos` | Listado con búsqueda por nombre, filtro por categoría y eliminación con ventana de confirmación | `GET /api/productos`, `GET /api/categorias`, `DELETE /api/productos/{id}` |
+| `/productos/nuevo` | Registro | `GET /api/categorias`, `POST /api/productos` |
+| `/productos/:idProducto/editar` | Edición | `GET /api/productos/{id}`, `GET /api/categorias`, `PUT /api/productos/{id}` |
+| `*` | Página no encontrada | — |
+
+Al guardar o eliminar, el listado muestra los mismos mensajes del módulo JSP ("Producto registrado correctamente.", etc.). El mensaje viaja en el `state` de la navegación y se borra del historial, para que no reaparezca al recargar.
+
+### Manejo de errores
+
+| Situación | Respuesta en pantalla |
+|---|---|
+| Datos inválidos (validación en el navegador) | Mensaje junto a cada campo, sin enviar la petición. Usa las reglas y los mensajes de `ProductoRequest` y `ProductoFormulario` |
+| `400` con `errores` por campo | Mensaje del backend junto a cada campo |
+| `409` (código duplicado, producto con ventas o compras) | Alerta general en el formulario o en la ventana de eliminación |
+| `404` o id de ruta no válido | Alerta "Producto con id N no existe" sin mostrar el formulario |
+| Backend apagado (falla de `fetch` o `502`/`503`/`504` del proxy) | "No se pudo conectar con el servidor. Verifique que el backend esté en ejecución." |
+
+Los campos con error reciben la clase `has-error`, `aria-invalid` y `aria-describedby`, para que el mensaje sea visible y lo anuncien los lectores de pantalla.
+
+### Estándares de codificación
+
+- **ESLint** (configuración plana) con las reglas recomendadas de JavaScript, `react-hooks` y `react-refresh`. `npm run lint` falla también con advertencias.
+- **Prettier** con comillas simples, punto y coma, `trailingComma: all` y ancho de 100 columnas. Solo formatea `src/**/*.{js,jsx}`, para no reformatear los CSS del prototipo.
+- Componentes en PascalCase (`ProductoListaPage`), funciones y variables en camelCase (`filtrarProductos`), constantes en UPPER_SNAKE_CASE (`FORMULARIO_VACIO`). Conceptos del negocio en español y rol técnico en inglés (`productosApi`, `ProductoFormularioPage`).
+
+### Comentarios en el código
+
+Como en el backend, los comentarios explican **por qué**. Por ejemplo:
+
+- `clienteHttp.js` explica por qué los estados 502, 503 y 504 se tratan como falta de conexión con el backend.
+- `formato.js` explica por qué la fecha no se convierte con `new Date('aaaa-mm-dd')`: se interpreta como UTC y en Colombia (UTC-5) mostraría el día anterior.
+- `productoFormulario.js` explica por qué los decimales del precio se cuentan sin los ceros finales, igual que `@Digits` en el backend.
+- `ModalConfirmacion` explica por qué no se cierra con Escape mientras se procesa la eliminación.
+
+### Pruebas
+
+```bash
+cd frontend
+npm test
+```
+
+67 pruebas automatizadas con Vitest, Testing Library y user-event. No requieren el backend: en las pruebas de páginas los servicios de la API se reemplazan con `vi.mock`.
+
+| Archivo | Pruebas | Qué verifica |
+|---|---|---|
+| `clienteHttp.test.js` | 9 | Respuesta 2xx, envío de JSON, 204, ProblemDetail 400, error sin JSON, falla de red y 502 del proxy |
+| `productosApi.test.js` | 6 | Ruta y método de cada servicio según el contrato de la API |
+| `formato.test.js` | 6 | Precio en COP y fecha sin desfase por zona horaria |
+| `productoFormulario.test.js` | 21 | Validaciones de obligatorios, longitudes, precio y stock; conversiones `aSolicitud` y `desdeProducto` |
+| `filtrarProductos.test.js` | 4 | Nombre sin distinguir mayúsculas, categoría y ambos combinados |
+| `ProductoListaPage.test.jsx` | 10 | Listado, filtros en vivo, estado vacío, mensaje de éxito, error de conexión, eliminación confirmada, cancelada y con 409 |
+| `ProductoFormularioPage.test.jsx` | 11 | Errores del cliente, registro, 409, errores 400 por campo, edición, 404 e id no válido |
+
+Además se hizo una prueba manual de punta a punta con el backend y PostgreSQL (11 casos, incluida la vista móvil y el backend apagado). Los datos de prueba usaron el prefijo `TEST-` y se eliminaron al terminar.
+
 ## Uso de JDBC
 
 El proyecto **no usa JPA ni Hibernate**. Todas las operaciones SQL están escritas a mano con la API estándar de JDBC en `JdbcProductoRepository`, `JdbcCategoriaRepository` y `JdbcProveedorRepository`. Spring Boot solo administra el pool de conexiones (`DataSource`).
@@ -189,6 +286,19 @@ El proyecto **no usa JPA ni Hibernate**. Todas las operaciones SQL están escrit
 | Historia de usuario HU2 | Depende de que existan proveedores registrados |
 | Diseño front-end (GA6-220501096-AA4-EV03) | Estructura de la pantalla `suppliers/list.html`, estilos y opción del menú |
 
+### Front-end en React (AA4-EV03)
+
+| Artefacto | Aplicación |
+|---|---|
+| RF-01 (registro de productos con código, nombre, categoría, fecha de vencimiento y cantidad) | Pantalla `/productos/nuevo`, `FormularioProducto` y validación en `productoFormulario.js` |
+| RF-25 (filtrar y buscar información por categoría) | `FiltrosProductos` y `filtrarProductos.js`: búsqueda por nombre y filtro por categoría |
+| Regla de negocio 1 (el SKU no puede repetirse) | El `409` de código duplicado se muestra como alerta en el formulario |
+| Diagrama de clases (GA4-220501095-AA2-EV04) | Los datos de las pantallas siguen `Producto` y su asociación con `Categoria` |
+| Diseño front-end (GA6-220501096-AA4-EV03) | Los cinco CSS del prototipo y la estructura de las pantallas de productos, replicada de las JSP |
+| Plan de trabajo del proyecto formativo | Front-end desarrollado con React |
+
+La consulta del inventario disponible se implementa en `/productos` (`ProductoListaPage`).
+
 ### Ajustes justificados
 
 - **Columna `codigo`:** RF-01 y la regla de negocio 1 exigen un código único que el modelo lógico no incluía. Se agregó con restricción `UNIQUE` (`database/migrations/001_ajustes_modulo_productos.sql`).
@@ -199,6 +309,9 @@ El proyecto **no usa JPA ni Hibernate**. Todas las operaciones SQL están escrit
 - **Nombre de proveedor único:** el modelo lógico no lo exigía. Se agregó para evitar registros duplicados del mismo proveedor, sin distinguir mayúsculas.
 - **Eliminación de proveedores:** RF-04 y el diagrama de clases solo indican crear, editar y consultar. Se agregó la eliminación para completar el CRUD; la base de datos impide eliminar un proveedor con compras registradas.
 - **NIT y estado del prototipo:** la pantalla de proveedores del prototipo los mostraba, pero no existen en el modelo lógico. No se incluyeron.
+- **Filtrado en el navegador (front-end React):** `GET /api/productos` no recibe parámetros de búsqueda. Para no modificar el contrato de la API, el front-end carga la lista una vez y filtra en el navegador por nombre (sin distinguir mayúsculas) y por categoría, mientras el usuario escribe.
+- **Eliminación con ventana modal (front-end React):** el módulo JSP usa una pantalla de confirmación porque los formularios HTML necesitan una petición GET para mostrarla. En la SPA la confirmación se muestra en una ventana modal del prototipo (`.modal`) sobre el listado, sin cambiar de página.
+- **Corrección del CSS del botón ☰ (front-end React):** en el prototipo, `.btn { display: inline-flex }` se carga después de `.app-header__menu-toggle { display: none }` y lo deja visible en escritorio. En la copia de `frontend/src/styles/` el selector se cambió a `.app-header .app-header__menu-toggle`, que tiene más especificidad. Los CSS de `src/main/resources/static/` no se modificaron.
 
 ## Estructura del proyecto
 
@@ -232,6 +345,21 @@ database/
 ├── data.sql                 Categorías iniciales
 ├── usuario_aplicacion.sql   Usuario de la aplicación con mínimo privilegio
 └── migrations/              Historial de cambios sobre la base de datos
+
+frontend/                    Front-end en React del módulo de productos (AA4-EV03)
+├── package.json             Dependencias y scripts (dev, build, lint, format, test)
+├── vite.config.js           Proxy /api hacia el backend y configuración de Vitest
+├── eslint.config.js         Reglas de ESLint
+├── .prettierrc.json         Reglas de formato
+└── src/
+    ├── api/                 Cliente HTTP y servicios de la API
+    ├── components/          layout/ (menú, encabezado, pie) y ui/ (alerta, campo, modal)
+    ├── features/productos/  Páginas, componentes, validación y filtrado de productos
+    ├── hooks/               Título de la página
+    ├── pages/               Página no encontrada
+    ├── styles/              CSS del prototipo
+    ├── test/                Configuración y datos de las pruebas
+    └── utils/               Formato de precio y fecha
 ```
 
 ## Convenciones de codificación
@@ -244,7 +372,7 @@ database/
 | Paquetes | minúsculas, por módulo y capa | `com.superinter.producto.web` |
 | JSP | minúsculas con guiones | `confirmar-eliminacion.jsp` |
 
-Los conceptos del negocio se nombran en español (`Producto`, `Categoria`, `Proveedor`) y el rol técnico en inglés como sufijo (`Repository`, `Service`, `Controller`, `Servlet`, `Request`, `Response`, `Exception`).
+Los conceptos del negocio se nombran en español (`Producto`, `Categoria`, `Proveedor`) y el rol técnico en inglés como sufijo (`Repository`, `Service`, `Controller`, `Servlet`, `Request`, `Response`, `Exception`). En el front-end se sigue la misma idea: `ProductoListaPage`, `productosApi`, `AppLayout`.
 
 Cada módulo se organiza por capas (`domain`, `repository`, `dto`, `service`, `web`). Un módulo usa el servicio de otro módulo, nunca su repositorio. Las dependencias se inyectan por constructor.
 
@@ -252,7 +380,7 @@ Cada módulo se organiza por capas (`domain`, `repository`, `dto`, `service`, `w
 
 - Los commits siguen **Conventional Commits** en español (`feat(proveedor): ...`, `test(proveedor): ...`, `fix(proveedor): ...`).
 - Cada funcionalidad se desarrolla en una rama (`feat/modulo-proveedores`) y se integra a `main` mediante un Pull Request con merge commit.
-- Cada evidencia entregada se marca con una etiqueta de versión (`v1.0.0`, `v2.0.0`, `v3.0.0`).
+- Cada evidencia entregada se marca con una etiqueta de versión (`v1.0.0`, `v2.0.0`, `v3.0.0`, `v4.0.0`).
 - Los cambios en la base de datos se registran como migraciones numeradas. Una migración aplicada no se modifica.
 - El archivo `.env` con las credenciales está excluido del repositorio; `.env.example` sirve de plantilla.
 
@@ -261,6 +389,7 @@ Cada módulo se organiza por capas (`domain`, `repository`, `dto`, `service`, `w
 - JDK 21 o superior
 - PostgreSQL 16 o superior, con `psql` 16.10 o superior (el `schema.sql` usa `\restrict`)
 - Git
+- Node.js 24 LTS para el front-end (mínimo `^22.22.2` o `^24.15.0`)
 
 No es necesario instalar Maven: el proyecto incluye Maven Wrapper (`mvnw`).
 
@@ -309,6 +438,7 @@ El archivo `.env` está excluido del repositorio.
 - **Productos:** http://localhost:8080/productos
 - **Proveedores:** http://localhost:8080/proveedores
 - **API REST:** http://localhost:8080/api/productos
+- **Front-end en React:** http://localhost:5173, después de `npm install` y `npm run dev` en `frontend/` (ver [Front-end en React](#front-end-en-react-aa4-ev03))
 
 ## API REST de productos (AA2-EV01)
 
@@ -345,6 +475,8 @@ curl -i -X POST http://localhost:8080/api/productos \
 | Integración de repositorios | Operaciones JDBC contra PostgreSQL, incluidas las restricciones de nombre único | Sí |
 
 Los datos de prueba usan el prefijo `TEST-` y se eliminan al terminar.
+
+El front-end tiene 67 pruebas propias (`cd frontend && npm test`), descritas en [Front-end en React](#front-end-en-react-aa4-ev03).
 
 ## Repositorio
 
