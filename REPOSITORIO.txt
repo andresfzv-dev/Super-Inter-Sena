@@ -1,12 +1,13 @@
-Evidencia GA7-220501096-AA3-EV01 - Codificación de módulos del software stand-alone, web y móvil
+Evidencia GA7-220501096-AA4-EV03 - Componente front-end del proyecto formativo y proyectos de clase
 Aprendiz: Andrés Felipe Zambrano Velasquez
 
 Repositorio del proyecto:
 https://github.com/andresfzv-dev/Super-Inter-Sena
 
-Versión entregada: v3.0.0
-Módulo codificado: gestión de proveedores (web con servlets y JSP)
+Versión entregada: v4.0.0
+Módulo codificado: front-end en React del módulo de productos (carpeta frontend/)
 
 Versiones anteriores:
 - v1.0.0: evidencia GA7-220501096-AA2-EV01
 - v2.0.0: evidencia GA7-220501096-AA2-EV02
+- v3.0.0: evidencia GA7-220501096-AA3-EV01
