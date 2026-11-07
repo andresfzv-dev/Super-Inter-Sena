@@ -178,11 +178,23 @@ describe('ProductoFormularioPage en edición', () => {
   });
 
   it('muestra el 404 y no muestra el formulario si el producto no existe', async () => {
-    const detalle = 'No se encontró el producto con id 99';
+    const detalle = 'Producto con id 99 no existe';
     vi.mocked(productosApi.obtener).mockRejectedValue(new ErrorApi(404, detalle));
     renderizar('/productos/99/editar');
 
     expect(await screen.findByRole('alert')).toHaveTextContent(detalle);
     expect(screen.queryByRole('button', { name: 'Guardar cambios' })).not.toBeInTheDocument();
   });
+
+  it.each(['abc', '0', '2147483648'])(
+    'trata el id %s de la ruta como inexistente sin llamar a la API',
+    async (id) => {
+      renderizar(`/productos/${id}/editar`);
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(`Producto con id ${id} no existe`);
+      expect(screen.queryByText('Cargando...')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Guardar cambios' })).not.toBeInTheDocument();
+      expect(productosApi.obtener).not.toHaveBeenCalled();
+    },
+  );
 });

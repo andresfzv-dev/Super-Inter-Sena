@@ -12,10 +12,20 @@ import {
   validarProducto,
 } from '../productoFormulario';
 
+// Límite de Integer en Java, el tipo del id en el backend.
+const ID_MAXIMO = 2147483647;
+
+// El backend responde un 400 con un mensaje técnico en inglés cuando el id de la ruta no se puede
+// convertir a Integer, así que ese caso se resuelve aquí como un producto inexistente.
+function esIdValido(idProducto) {
+  return /^\d+$/.test(idProducto) && Number(idProducto) >= 1 && Number(idProducto) <= ID_MAXIMO;
+}
+
 /** Registro (/productos/nuevo) y edición (/productos/:idProducto/editar) con la misma pantalla. */
 export default function ProductoFormularioPage() {
   const { idProducto } = useParams();
   const esEdicion = idProducto !== undefined;
+  const idInvalido = esEdicion && !esIdValido(idProducto);
   const titulo = esEdicion ? 'Editar producto' : 'Registrar producto';
   useTituloPagina(titulo);
   const navigate = useNavigate();
@@ -29,6 +39,9 @@ export default function ProductoFormularioPage() {
   const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
+    if (idInvalido) {
+      return undefined;
+    }
     // Evita actualizar el estado si el usuario salió de la página antes de recibir la respuesta.
     let activo = true;
 
@@ -58,7 +71,7 @@ export default function ProductoFormularioPage() {
     return () => {
       activo = false;
     };
-  }, [esEdicion, idProducto]);
+  }, [esEdicion, idInvalido, idProducto]);
 
   function cambiarCampo(campo, valor) {
     setValores((actuales) => ({ ...actuales, [campo]: valor }));
@@ -102,6 +115,9 @@ export default function ProductoFormularioPage() {
     }
   }
 
+  // Mismo formato que el 404 del backend, para que el usuario vea un único tipo de mensaje.
+  const mensajeErrorCarga = idInvalido ? `Producto con id ${idProducto} no existe` : errorCarga;
+
   return (
     <>
       <div className="page-heading">
@@ -118,9 +134,9 @@ export default function ProductoFormularioPage() {
         </Link>
       </div>
 
-      {cargando && <p className="form-hint">Cargando...</p>}
-      {errorCarga && <Alerta tipo="danger">{errorCarga}</Alerta>}
-      {!cargando && !errorCarga && (
+      {cargando && !mensajeErrorCarga && <p className="form-hint">Cargando...</p>}
+      {mensajeErrorCarga && <Alerta tipo="danger">{mensajeErrorCarga}</Alerta>}
+      {!cargando && !mensajeErrorCarga && (
         <FormularioProducto
           valores={valores}
           errores={errores}
