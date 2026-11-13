@@ -22,3 +22,8 @@ GRANT SELECT ON categorias TO super_inter_app;
 -- Módulo de proveedores: CRUD completo (migración 002)
 GRANT SELECT, INSERT, UPDATE, DELETE ON proveedores TO super_inter_app;
 GRANT USAGE ON SEQUENCE proveedores_id_proveedor_seq TO super_inter_app;
+
+-- Módulo de usuarios: registro e inicio de sesión (migración 003).
+-- Sin UPDATE ni DELETE por mínimo privilegio.
+GRANT SELECT, INSERT ON usuarios TO super_inter_app;
+GRANT USAGE ON SEQUENCE usuarios_id_usuario_seq TO super_inter_app;

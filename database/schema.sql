@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict H8nZYc6qUfOzGjMrp71pKCduqTOekn8IhHd1d7VZzavALosaJUO7ZCUvYo6oLCS
+\restrict oaGYoOlVt4pPZceXWb6fO246tG0RkMRHPHwWFufnChHeUUzFNAz2lghXNVB0TCm
 
 -- Dumped from database version 16.15
 -- Dumped by pg_dump version 16.15
@@ -234,7 +234,10 @@ CREATE TABLE public.usuarios (
     nombre character varying(100) NOT NULL,
     correo character varying(150) NOT NULL,
     contrasena character varying(255) NOT NULL,
-    rol character varying(50) NOT NULL
+    rol character varying(50) NOT NULL,
+    CONSTRAINT chk_usuarios_correo_minusculas CHECK (((correo)::text = lower((correo)::text))),
+    CONSTRAINT chk_usuarios_nombre CHECK ((btrim((nombre)::text) <> ''::text)),
+    CONSTRAINT chk_usuarios_rol CHECK (((rol)::text = ANY ((ARRAY['ADMINISTRADOR'::character varying, 'GERENTE'::character varying, 'AUXILIAR_INVENTARIOS'::character varying, 'CAJERO'::character varying, 'COMPRAS'::character varying])::text[])))
 );
 
 
@@ -507,5 +510,5 @@ ALTER TABLE ONLY public.ventas
 -- PostgreSQL database dump complete
 --
 
-\unrestrict H8nZYc6qUfOzGjMrp71pKCduqTOekn8IhHd1d7VZzavALosaJUO7ZCUvYo6oLCS
+\unrestrict oaGYoOlVt4pPZceXWb6fO246tG0RkMRHPHwWFufnChHeUUzFNAz2lghXNVB0TCm
 
