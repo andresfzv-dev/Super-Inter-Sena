@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -30,13 +31,19 @@ import tools.jackson.databind.json.JsonMapper;
  * Prueba de punta a punta del servicio web de autenticación: levanta la aplicación con
  * Tomcat, Spring Security y PostgreSQL, y envía peticiones HTTP reales.
  *
+ * <p>Incluye pruebas de regresión: la API de productos, las JSP y sus formularios POST deben
+ * seguir funcionando sin token después de agregar Spring Security.
+ *
  * <p>Los usuarios de prueba usan correos con el prefijo test- y se eliminan antes y después
- * de cada prueba con la función eliminar_usuarios_de_prueba() (migración 004).
+ * de cada prueba con la función eliminar_usuarios_de_prueba() (migración 004). Los
+ * proveedores de prueba usan el prefijo TEST-.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class AutenticacionIntegracionTest {
 
     private static final String SQL_LIMPIAR_DATOS_DE_PRUEBA = "SELECT eliminar_usuarios_de_prueba()";
+    private static final String SQL_LIMPIAR_PROVEEDORES_DE_PRUEBA =
+            "DELETE FROM proveedores WHERE nombre LIKE 'TEST-%'";
 
     private static final String CORREO = "test-integracion@ejemplo.com";
     private static final String CONTRASENA = "Clave-Segura-2026";
@@ -212,6 +219,50 @@ class AutenticacionIntegracionTest {
         assertThat(cuerpo.get("rol").asString()).isEqualTo("CAJERO");
     }
 
+    // --- Regresión: Spring Security no debe afectar lo que ya era público ---
+
+    @Test
+    void laApiDeProductosSigueRespondiendoSinToken() throws Exception {
+        HttpResponse<String> respuesta = get("/api/productos");
+
+        assertThat(respuesta.statusCode()).isEqualTo(200);
+        assertThat(respuesta.body()).startsWith("[");
+    }
+
+    @Test
+    void laPantallaJspDeProductosSigueRespondiendoSinToken() throws Exception {
+        HttpResponse<String> respuesta = get("/productos");
+
+        assertThat(respuesta.statusCode()).isEqualTo(200);
+        assertThat(respuesta.body()).contains("<html").doesNotContain("${");
+    }
+
+    @Test
+    void elFormularioJspDeProveedoresNoEsRechazadoPorCsrf() throws Exception {
+        // Las JSP envían POST sin token CSRF; con CSRF activo esta petición respondería 403.
+        String formulario = "nombre=" + URLEncoder.encode("TEST-Proveedor Regresión Seguridad", UTF_8)
+                + "&contacto=&telefono=&correo=";
+
+        HttpResponse<String> respuesta = postFormulario("/proveedores/nuevo", formulario);
+
+        assertThat(respuesta.statusCode()).isEqualTo(302);
+        assertThat(respuesta.headers().firstValue("Location"))
+                .hasValueSatisfying(destino -> assertThat(destino).endsWith("/proveedores?mensaje=creado"));
+    }
+
+    private HttpResponse<String> get(String ruta) throws IOException, InterruptedException {
+        HttpRequest peticion = HttpRequest.newBuilder(URI.create(urlBase + ruta)).GET().build();
+        return cliente.send(peticion, HttpResponse.BodyHandlers.ofString(UTF_8));
+    }
+
+    private HttpResponse<String> postFormulario(String ruta, String cuerpo) throws IOException, InterruptedException {
+        HttpRequest peticion = HttpRequest.newBuilder(URI.create(urlBase + ruta))
+                .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+                .POST(HttpRequest.BodyPublishers.ofString(cuerpo, UTF_8))
+                .build();
+        return cliente.send(peticion, HttpResponse.BodyHandlers.ofString(UTF_8));
+    }
+
     private String obtenerToken() throws IOException, InterruptedException {
         registrar("Ana Pérez", CORREO, CONTRASENA);
         return jsonMapper.readTree(login(CORREO, CONTRASENA).body()).get("token").asString();
@@ -246,8 +297,10 @@ class AutenticacionIntegracionTest {
 
     private void eliminarDatosDePrueba() throws SQLException {
         try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(SQL_LIMPIAR_DATOS_DE_PRUEBA)) {
-            statement.execute();
+             PreparedStatement usuarios = connection.prepareStatement(SQL_LIMPIAR_DATOS_DE_PRUEBA);
+             PreparedStatement proveedores = connection.prepareStatement(SQL_LIMPIAR_PROVEEDORES_DE_PRUEBA)) {
+            usuarios.execute();
+            proveedores.executeUpdate();
         }
     }
 

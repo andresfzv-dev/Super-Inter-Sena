@@ -1,0 +1,225 @@
+{
+  "info": {
+    "_postman_id": "6f1d2c1e-5a3b-4c8e-9f2a-aa5e01000001",
+    "name": "Super Inter - Autenticación (AA5-EV01)",
+    "description": "Servicio web de registro e inicio de sesión de Super Inter (evidencia GA7-220501096-AA5-EV01).\n\nEjecutar las peticiones en orden (o con el Collection Runner). La petición 1 genera un correo nuevo con el prefijo test- en cada ejecución, para poder repetir la colección sin conflictos; la petición 3 guarda el token en la variable {{token}}, que usa la petición 5.\n\nRequisito: backend en ejecución con ./mvnw spring-boot:run.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "correo", "value": "" },
+    { "key": "correoMayusculas", "value": "" },
+    { "key": "contrasena", "value": "Clave-Segura-2026" },
+    { "key": "token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Registro correcto (201)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Correo único por ejecución. El prefijo test- permite borrarlo luego con el SQL de limpieza.",
+              "const correo = `test-postman-${Date.now()}@ejemplo.com`;",
+              "pm.collectionVariables.set('correo', correo);",
+              "pm.collectionVariables.set('correoMayusculas', correo.toUpperCase());"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const cuerpo = pm.response.json();",
+              "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+              "pm.test('Mensaje de registro', () => pm.expect(cuerpo.mensaje).to.eql('Usuario registrado correctamente'));",
+              "pm.test('Rol asignado CAJERO', () => pm.expect(cuerpo.usuario.rol).to.eql('CAJERO'));",
+              "pm.test('La respuesta no incluye la contraseña', () => {",
+              "    pm.expect(cuerpo.usuario).to.not.have.property('contrasena');",
+              "    pm.expect(pm.response.text()).to.not.include(pm.collectionVariables.get('contrasena'));",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nombre\": \"Usuario de Prueba Postman\",\n  \"correo\": \"{{correo}}\",\n  \"contrasena\": \"{{contrasena}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/registro",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "auth", "registro"]
+        },
+        "description": "Registro público. No se envía rol: todo usuario registrado queda como CAJERO."
+      }
+    },
+    {
+      "name": "2. Registro duplicado con el correo en mayúsculas (409)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const cuerpo = pm.response.json();",
+              "pm.test('Responde 409', () => pm.response.to.have.status(409));",
+              "pm.test('Indica el correo duplicado', () => pm.expect(cuerpo.detail).to.eql('Ya existe un usuario registrado con el correo ' + pm.collectionVariables.get('correo')));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nombre\": \"Otro Usuario\",\n  \"correo\": \"{{correoMayusculas}}\",\n  \"contrasena\": \"{{contrasena}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/registro",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "auth", "registro"]
+        },
+        "description": "El correo se normaliza a minúsculas, así que el mismo correo en mayúsculas es un duplicado."
+      }
+    },
+    {
+      "name": "3. Login correcto (200, guarda el token)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const cuerpo = pm.response.json();",
+              "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+              "pm.test('Autenticación satisfactoria', () => pm.expect(cuerpo.mensaje).to.eql('Autenticación satisfactoria'));",
+              "pm.test('Entrega un token Bearer', () => {",
+              "    pm.expect(cuerpo.tipoToken).to.eql('Bearer');",
+              "    pm.expect(cuerpo.token).to.be.a('string').and.not.empty;",
+              "});",
+              "// El token queda disponible para la petición 5 como {{token}}.",
+              "pm.collectionVariables.set('token', cuerpo.token);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"correo\": \"{{correo}}\",\n  \"contrasena\": \"{{contrasena}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "auth", "login"]
+        }
+      }
+    },
+    {
+      "name": "4. Login fallido (401)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const cuerpo = pm.response.json();",
+              "pm.test('Responde 401', () => pm.response.to.have.status(401));",
+              "pm.test('Error en la autenticación', () => {",
+              "    pm.expect(cuerpo.title).to.eql('Error en la autenticación');",
+              "    pm.expect(cuerpo.detail).to.eql('Correo o contraseña incorrectos');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"correo\": \"{{correo}}\",\n  \"contrasena\": \"contrasena-incorrecta\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/login",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "auth", "login"]
+        },
+        "description": "Con un correo que no existe la respuesta es exactamente la misma, para no revelar qué correos están registrados."
+      }
+    },
+    {
+      "name": "5. Perfil con token (200)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const cuerpo = pm.response.json();",
+              "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+              "pm.test('Datos del usuario del token', () => {",
+              "    pm.expect(cuerpo.correo).to.eql(pm.collectionVariables.get('correo'));",
+              "    pm.expect(cuerpo.rol).to.eql('CAJERO');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/perfil",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "auth", "perfil"]
+        },
+        "description": "Envía la cabecera Authorization: Bearer {{token}} con el token de la petición 3."
+      }
+    },
+    {
+      "name": "6. Perfil sin token (401)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const cuerpo = pm.response.json();",
+              "pm.test('Responde 401', () => pm.response.to.have.status(401));",
+              "pm.test('No autenticado', () => pm.expect(cuerpo.title).to.eql('No autenticado'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/perfil",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "auth", "perfil"]
+        }
+      }
+    }
+  ]
+}
