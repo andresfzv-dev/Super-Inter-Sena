@@ -1,6 +1,6 @@
 # Super Inter
 
-Módulos de **gestión de productos** y **gestión de proveedores** del Sistema de Gestión Integral para el supermercado Super Inter, con un front-end en React para el módulo de productos.
+Módulos de **gestión de productos** y **gestión de proveedores** del Sistema de Gestión Integral para el supermercado Super Inter, con un front-end en React para el módulo de productos y un **servicio web de registro e inicio de sesión** con token JWT.
 
 **Aprendiz:** Andrés Felipe Zambrano Velasquez
 **Programa:** Análisis y Desarrollo de Software (ADSO) – SENA, ficha 3336098
@@ -11,6 +11,7 @@ Módulos de **gestión de productos** y **gestión de proveedores** del Sistema 
 | GA7-220501096-AA2-EV02 – Módulos de software codificados y probados | Módulo web con servlets, formularios HTML y JSP | `v2.0.0` |
 | GA7-220501096-AA3-EV01 – Codificación de módulos del software stand-alone, web y móvil | Módulo web de gestión de proveedores | `v3.0.0` |
 | GA7-220501096-AA4-EV03 – Componente front-end del proyecto formativo y proyectos de clase | Front-end en React del módulo de productos | `v4.0.0` |
+| GA7-220501096-AA5-EV01 – Diseño y desarrollo de servicios web – caso | Servicio web REST de registro e inicio de sesión con JWT | `v5.0.0` |
 
 ## Descripción
 
@@ -20,11 +21,14 @@ Aplicación web que implementa el registro, consulta, actualización y eliminaci
 |---|---|---|---|
 | Productos | Sí (AA2-EV02) | Sí (AA2-EV01) | Sí (AA4-EV03) |
 | Proveedores | Sí (AA3-EV01) | No | No |
+| Usuarios (registro e inicio de sesión) | No | Sí (AA5-EV01) | No |
 
 ```
-Navegador (formularios HTML)        Cliente HTTP (curl, frontend)
+Navegador (formularios HTML)        Cliente HTTP (curl, Postman, frontend)
             │                                   │
-       Servlets + JSP               Controladores REST (productos)
+            │                     Spring Security (valida el token JWT)
+            │                                   │
+       Servlets + JSP          Controladores REST (productos, autenticación)
             └────────────────┬──────────────────┘
                      Servicios (reglas de negocio)
                              │
@@ -41,6 +45,8 @@ Los servicios no dependen de servlets ni de JSP. La interfaz web actual y una fu
 |---|---|
 | Java 21 | Lenguaje |
 | Spring Boot 4.1 | Configuración, inyección de dependencias y servidor Tomcat embebido |
+| Spring Security 7 | Cifrado de contraseñas con BCrypt y validación del token JWT (resource server) |
+| Nimbus JOSE + JWT | Firma y verificación de tokens JWT con HS256 (`JwtEncoder` y `JwtDecoder`) |
 | Jakarta Servlet (`HttpServlet`) | Controladores del módulo web |
 | JSP, Expression Language y JSTL | Vistas del módulo web |
 | JDBC (`DataSource`, `PreparedStatement`, `ResultSet`) | Acceso a datos |
@@ -244,9 +250,340 @@ npm test
 
 Además se hizo una prueba manual de punta a punta con el backend y PostgreSQL (11 casos, incluida la vista móvil y el backend apagado). Los datos de prueba usaron el prefijo `TEST-` y se eliminaron al terminar.
 
+## Servicio web de autenticación (AA5-EV01)
+
+Servicio web REST de **registro** e **inicio de sesión**. Recibe un usuario (el correo) y una contraseña: si la autenticación es correcta responde **"Autenticación satisfactoria"** con un token JWT; si no, responde **"Error en la autenticación"**.
+
+### Endpoints
+
+| Método | Ruta | Acceso | Respuestas |
+|---|---|---|---|
+| `POST` | `/api/auth/registro` | Público | `201` registrado, `400` datos inválidos, `409` correo ya registrado |
+| `POST` | `/api/auth/login` | Público | `200` autenticación satisfactoria, `400` datos vacíos, `401` error en la autenticación |
+| `GET` | `/api/auth/perfil` | Requiere `Authorization: Bearer <token>` | `200` datos del usuario, `401` sin token o con token inválido o vencido |
+
+Los errores se responden en formato `ProblemDetail` (RFC 9457), igual que el resto de la API.
+
+#### Registro
+
+| Campo | Obligatorio | Validación |
+|---|---|---|
+| `nombre` | Sí | Máximo 100 caracteres; se quitan los espacios de los extremos |
+| `correo` | Sí | Formato de correo, máximo 150 caracteres; se quitan los espacios y se convierte a minúsculas |
+| `contrasena` | Sí | Mínimo 8 caracteres y máximo **72 bytes en UTF-8** |
+
+El cliente no envía el rol: todo usuario registrado queda como `CAJERO`. Si el JSON trae un campo `rol`, se ignora.
+
+```bash
+curl -i -X POST http://localhost:8080/api/auth/registro \
+  -H "Content-Type: application/json" \
+  -d '{"nombre":"Ana Pérez","correo":"ana.perez@ejemplo.com","contrasena":"Clave-Segura-2026"}'
+```
+
+Respuesta `201 Created` (nunca incluye la contraseña):
+
+```json
+{
+  "mensaje": "Usuario registrado correctamente",
+  "usuario": { "idUsuario": 1, "nombre": "Ana Pérez", "correo": "ana.perez@ejemplo.com", "rol": "CAJERO" }
+}
+```
+
+Respuesta `409 Conflict` si el correo ya existe, aunque se escriba con otras mayúsculas:
+
+```json
+{
+  "detail": "Ya existe un usuario registrado con el correo ana.perez@ejemplo.com",
+  "instance": "/api/auth/registro",
+  "status": 409,
+  "title": "Conflicto con el estado actual"
+}
+```
+
+Respuesta `400 Bad Request` con el error de cada campo:
+
+```json
+{
+  "detail": "Uno o más campos tienen valores inválidos",
+  "instance": "/api/auth/registro",
+  "status": 400,
+  "title": "Datos inválidos",
+  "errores": {
+    "contrasena": "La contraseña debe tener al menos 8 caracteres",
+    "nombre": "El nombre es obligatorio",
+    "correo": "El correo no tiene un formato válido"
+  }
+}
+```
+
+#### Inicio de sesión
+
+```bash
+curl -i -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"correo":"ana.perez@ejemplo.com","contrasena":"Clave-Segura-2026"}'
+```
+
+Respuesta `200 OK`:
+
+```json
+{
+  "mensaje": "Autenticación satisfactoria",
+  "token": "eyJhbGciOiJIUzI1NiJ9...",
+  "tipoToken": "Bearer",
+  "expiraEn": 3600,
+  "usuario": { "idUsuario": 1, "nombre": "Ana Pérez", "correo": "ana.perez@ejemplo.com", "rol": "CAJERO" }
+}
+```
+
+`expiraEn` es la vida del token en segundos. Respuesta `401 Unauthorized`, **idéntica** si el correo no existe o si la contraseña es incorrecta:
+
+```json
+{
+  "detail": "Correo o contraseña incorrectos",
+  "instance": "/api/auth/login",
+  "status": 401,
+  "title": "Error en la autenticación"
+}
+```
+
+#### Perfil (protegido)
+
+```bash
+curl -i http://localhost:8080/api/auth/perfil -H "Authorization: Bearer <token>"
+```
+
+Respuesta `200 OK` con los datos tomados del token: `{ "idUsuario": 1, "nombre": "Ana Pérez", "correo": "ana.perez@ejemplo.com", "rol": "CAJERO" }`.
+
+Sin token, o con un token alterado o vencido, responde `401` con `application/problem+json` y la cabecera `WWW-Authenticate: Bearer`:
+
+```json
+{
+  "detail": "Se requiere un token de acceso. Inicie sesión y envíelo en la cabecera Authorization: Bearer <token>",
+  "instance": "/api/auth/perfil",
+  "status": 401,
+  "title": "No autenticado"
+}
+```
+
+### Flujo del token
+
+```
+Cliente                                   Backend
+  │  POST /api/auth/login (correo, contraseña) │
+  │ ─────────────────────────────────────────▶ │  AutenticacionService: busca el usuario y compara con BCrypt
+  │ ◀───────────────────────────────────────── │  TokenService: firma el JWT con HS256 (JWT_SECRET)
+  │  200 { mensaje, token, ... }               │
+  │                                            │
+  │  GET /api/auth/perfil                      │
+  │  Authorization: Bearer <token>             │
+  │ ─────────────────────────────────────────▶ │  Spring Security: verifica firma, emisor y vencimiento
+  │ ◀───────────────────────────────────────── │  AutenticacionController: datos del usuario del token
+  │  200 { idUsuario, nombre, correo, rol }    │
+```
+
+- El token lleva los claims `iss` (`super-inter`), `sub` (id del usuario), `iat`, `exp`, `nombre`, `correo` y `rol`. Nunca lleva la contraseña ni su hash: el contenido de un JWT solo está codificado en Base64, cualquiera con el token puede leerlo.
+- El servidor no guarda sesiones (`STATELESS`): cada petición se autentica solo con su token.
+- El claim `rol` se convierte en la autoridad `ROLE_<rol>` (por ejemplo `ROLE_CAJERO`), lista para restringir endpoints por rol (RNF-02).
+
+### Configuración del secreto JWT
+
+El token se firma con la clave de la variable `JWT_SECRET`, que va en `.env` (excluido del repositorio):
+
+```bash
+openssl rand -base64 32
+```
+
+```properties
+JWT_SECRET=<salida del comando anterior>
+JWT_EXPIRACION=60m
+```
+
+- `JWT_SECRET` debe estar en Base64 y tener al menos 32 bytes (256 bits, el mínimo de HS256). Si falta o es más corto, la aplicación **no arranca** y muestra: `JWT_SECRET debe estar en Base64 y tener al menos 32 bytes (genérelo con: openssl rand -base64 32)`.
+- `JWT_EXPIRACION` es opcional (por defecto `60m`). Admite valores como `30m` o `2h`.
+- `application.properties` lee estas variables en `superinter.jwt.secreto`, `superinter.jwt.emisor` y `superinter.jwt.expiracion`, validadas por `JwtProperties`.
+
+### Decisiones de seguridad
+
+- **Contraseñas con BCrypt (RNF-03):** se guardan cifradas (`$2a$10$...`), con una sal aleatoria por contraseña. Nunca se devuelven, ni se escriben en el log, ni van en el token.
+- **Mensaje genérico:** el `401` del login es el mismo si el correo no existe o si la contraseña es incorrecta, para no revelar qué correos están registrados.
+- **Comparación contra un hash fijo:** cuando el correo no existe, la contraseña se compara igual contra un hash BCrypt fijo, calculado al arrancar con el mismo costo que los hashes reales. Sin esto, la respuesta sería más rápida para los correos inexistentes y el tiempo revelaría cuáles existen.
+- **Límite de 72 bytes:** BCrypt solo procesa los primeros 72 bytes, y Spring Security lanza una excepción si recibe más. El registro lo valida en bytes UTF-8 (las letras con tilde y la ñ ocupan 2), con la anotación `@MaximoBytesUtf8`, así que responde `400` en lugar de `500`. El login rechaza con `401` una contraseña de más de 72 bytes, porque BCrypt la recortaría y aceptaría cualquier texto agregado después de una contraseña de 72 bytes.
+- **Rol por defecto:** el registro público asigna siempre `CAJERO`. Por mínimo privilegio y por la regla de negocio 3, el cliente no puede elegir su rol; cambiarlo es tarea del administrador (HU4).
+- **Correo normalizado:** se guarda y se busca sin espacios y en minúsculas. La restricción `chk_usuarios_correo_minusculas` lo garantiza en la base de datos, así que la restricción única del correo tampoco distingue mayúsculas.
+- **CSRF desactivado:** la autenticación no usa cookies ni sesión; el token viaja en la cabecera `Authorization`, que un sitio externo no puede agregar a una petición del navegador. Además, los formularios JSP envían POST sin token CSRF. Debe activarse si en el futuro se agrega un inicio de sesión por sesión o cookies.
+- **Endpoints públicos:** solo `/api/auth/perfil` exige token. Las JSP, la API de productos y el front-end en React siguen funcionando sin iniciar sesión, porque aún no tienen pantalla de inicio de sesión.
+- **Sin `formLogin` ni `httpBasic`:** la única forma de autenticarse es el endpoint de login. Spring Security no genera un usuario ni una contraseña por defecto.
+- **Registro de actividades (RNF-04):** se registran el registro de un usuario (`info`, con el id), el inicio de sesión exitoso (`info`, con el id) y el fallido (`warn`, con el correo). Nunca se registran contraseñas, hashes ni tokens.
+
+### Cambios en la base de datos
+
+La tabla `usuarios` ya existía en el modelo lógico. No se creó; se ajustó con dos migraciones:
+
+`database/migrations/003_modulo_usuarios.sql`:
+
+- `chk_usuarios_nombre`: rechaza nombres formados solo por espacios.
+- `chk_usuarios_rol`: el rol solo puede ser `ADMINISTRADOR`, `GERENTE`, `AUXILIAR_INVENTARIOS`, `CAJERO` o `COMPRAS`.
+- `chk_usuarios_correo_minusculas`: el correo se guarda en minúsculas.
+- Permisos de `super_inter_app`: `SELECT` e `INSERT` sobre `usuarios` y `USAGE` sobre su secuencia. Sin `UPDATE` ni `DELETE`, por mínimo privilegio.
+
+`database/migrations/004_limpieza_usuarios_de_prueba.sql`:
+
+- Función `eliminar_usuarios_de_prueba()`, `SECURITY DEFINER`, que solo borra usuarios con correo `test-%`. Las pruebas automáticas la usan para limpiar sus datos sin que la aplicación tenga permiso `DELETE` sobre la tabla. Solo `super_inter_app` puede ejecutarla.
+
+Los permisos se agregaron también a `database/usuario_aplicacion.sql` para instalaciones nuevas, y `database/schema.sql` se regeneró.
+
+En una base de datos existente, se aplican como `postgres`:
+
+```bash
+psql -U postgres -h localhost -p 5434 -d super-inter -v ON_ERROR_STOP=1 \
+  -f database/migrations/003_modulo_usuarios.sql
+psql -U postgres -h localhost -p 5434 -d super-inter -v ON_ERROR_STOP=1 \
+  -f database/migrations/004_limpieza_usuarios_de_prueba.sql
+```
+
+### Comentarios en el código
+
+Como en los demás módulos, los comentarios explican **por qué**. Por ejemplo:
+
+- `AutenticacionService` explica la comparación contra un hash fijo y el control de los 72 bytes en el login.
+- `SeguridadConfig` explica por qué es seguro desactivar CSRF hoy y cuándo habría que activarlo, y por qué solo el perfil exige token.
+- `MaximoBytesUtf8` explica por qué `@Size` no basta para la contraseña.
+- `RespuestaErrorSeguridad` explica por qué los errores de seguridad no llegan a `@RestControllerAdvice` y cómo se responden en ProblemDetail.
+- La migración 004 explica por qué la función fija `search_path` y por qué el filtro `test-%` no se recibe como parámetro.
+
+### Pruebas automáticas
+
+50 pruebas nuevas en el backend:
+
+| Clase | Pruebas | Qué verifica | Requiere BD |
+|---|---|---|---|
+| `RegistroRequestTest` | 13 | Obligatorios, longitudes, formato del correo, contraseña de 7 y 8 caracteres, límite de 72 bytes con "ñ" y normalización del correo | No |
+| `UsuarioServiceTest` | 3 | Rol `CAJERO`, contraseña cifrada verificable con `matches` y correo duplicado sin distinguir mayúsculas | No |
+| `AutenticacionServiceTest` | 5 | Credenciales correctas, contraseña incorrecta, correo inexistente (misma excepción y mensaje), correo con mayúsculas y espacios, texto agregado a una contraseña de 72 bytes | No |
+| `TokenServiceTest` | 6 | Claims y algoritmo del token, sin contraseña, token de otro secreto rechazado y token vencido rechazado | No |
+| `RolTest` | 2 | Conversión del código guardado al rol | No |
+| `GlobalExceptionHandlerTest` | 4 | Respuestas `401` de credenciales, sin token y con token inválido, y `403` | No |
+| `JdbcUsuarioRepositoryTest` | 4 | Guardar, buscar por correo, verificar si existe y SQLSTATE `23505` con correo duplicado | Sí |
+| `AutenticacionIntegracionTest` | 13 | De punta a punta con Tomcat y PostgreSQL: registro, login, perfil y regresión de `/api/productos`, la JSP `/productos` y un POST de formulario JSP sin `403` por CSRF | Sí |
+
+### Pruebas manuales
+
+Con el backend en ejecución (`./mvnw spring-boot:run`), en Git Bash. Los correos de prueba empiezan por `test-` para poder borrarlos al final.
+
+| # | Prueba | Resultado esperado |
+|---|---|---|
+| 1 | Registro correcto | `201`, rol `CAJERO`, sin contraseña en la respuesta |
+| 2 | Registro con el mismo correo en mayúsculas | `409` "Ya existe un usuario registrado con el correo..." |
+| 3 | Registro con datos inválidos | `400` con errores en `nombre`, `correo` y `contrasena` |
+| 4 | Login correcto | `200` "Autenticación satisfactoria" y token |
+| 5 | Login con contraseña incorrecta | `401` "Error en la autenticación" |
+| 6 | Login con correo inexistente | `401` con el mismo cuerpo de la prueba 5 |
+| 7 | Perfil sin token | `401` "No autenticado" en JSON |
+| 8 | Perfil con token | `200` con `idUsuario`, `nombre`, `correo` y `rol` |
+| 9 | Perfil con token alterado | `401` "El token de acceso no es válido o está vencido..." |
+| 10 | JSP de productos y proveedores, y front-end React | Funcionan sin iniciar sesión; un formulario JSP guarda sin `403` |
+
+```bash
+# 1. Registro correcto
+curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8080/api/auth/registro \
+  -H "Content-Type: application/json" \
+  -d '{"nombre":"Usuario Manual","correo":"test-manual@ejemplo.com","contrasena":"Clave-Segura-2026"}'
+
+# 2. Mismo correo en mayúsculas
+curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8080/api/auth/registro \
+  -H "Content-Type: application/json" \
+  -d '{"nombre":"Otro","correo":"TEST-MANUAL@EJEMPLO.COM","contrasena":"Clave-Segura-2026"}'
+
+# 3. Datos inválidos
+curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8080/api/auth/registro \
+  -H "Content-Type: application/json" \
+  -d '{"nombre":"","correo":"sin-arroba","contrasena":"1234567"}'
+
+# 4. Login correcto
+curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"correo":"test-manual@ejemplo.com","contrasena":"Clave-Segura-2026"}'
+
+# Guardar el token en una variable (sin imprimirlo), para las pruebas 8 y 9
+TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"correo":"test-manual@ejemplo.com","contrasena":"Clave-Segura-2026"}' \
+  | sed -E 's/.*"token":"([^"]+)".*/\1/')
+echo "Longitud del token: ${#TOKEN}"
+
+# 5. Contraseña incorrecta
+curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"correo":"test-manual@ejemplo.com","contrasena":"incorrecta123"}'
+
+# 6. Correo inexistente
+curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"correo":"test-no-existe@ejemplo.com","contrasena":"Clave-Segura-2026"}'
+
+# 7. Perfil sin token
+curl -s -i http://localhost:8080/api/auth/perfil
+
+# 8. Perfil con token
+curl -s -w "\nHTTP %{http_code}\n" http://localhost:8080/api/auth/perfil \
+  -H "Authorization: Bearer $TOKEN"
+
+# 9. Perfil con token alterado (cambia el primer carácter de la firma)
+FIRMA=${TOKEN##*.}
+if [ "${FIRMA:0:1}" = "A" ]; then C=B; else C=A; fi
+ALTERADO="${TOKEN%.*}.${C}${FIRMA:1}"
+curl -s -w "\nHTTP %{http_code}\n" http://localhost:8080/api/auth/perfil \
+  -H "Authorization: Bearer $ALTERADO"
+```
+
+Para la prueba 10 se abren http://localhost:8080/productos y http://localhost:8080/proveedores, se registra un proveedor `TEST-` desde el formulario, y se ejecuta el front-end en React (`cd frontend && npm run dev`). Todo debe funcionar sin iniciar sesión.
+
+**Resultado:** las 10 pruebas pasaron.
+
+#### Colección de Postman
+
+`docs/postman/Super-Inter-Autenticacion.postman_collection.json` tiene 6 peticiones con pruebas automáticas (`pm.test`), en este orden:
+
+1. Registro correcto (`201`). Genera un correo `test-postman-<marca de tiempo>@ejemplo.com` en cada ejecución, para poder repetir la colección.
+2. Registro duplicado con el correo en mayúsculas (`409`).
+3. Login correcto (`200`). Guarda el token en la variable `{{token}}`.
+4. Login fallido (`401`).
+5. Perfil con token (`200`). Envía `Authorization: Bearer {{token}}`.
+6. Perfil sin token (`401`).
+
+Se importa en Postman (*Import*) y se ejecuta con el *Collection Runner*. La variable `baseUrl` vale `http://localhost:8080`.
+
+#### Verificación en la base de datos y limpieza
+
+Como `postgres`, para comprobar que la contraseña quedó cifrada (sin mostrar el hash completo):
+
+```bash
+psql -U postgres -h localhost -p 5434 -d super-inter -c "SELECT id_usuario, correo, rol, left(contrasena, 7) AS inicio_hash, length(contrasena) AS longitud, contrasena LIKE '\$2a\$%' AS es_bcrypt FROM usuarios WHERE correo LIKE 'test-%' ORDER BY id_usuario;"
+```
+
+Resultado esperado: `inicio_hash` = `$2a$10$`, `longitud` = 60, `es_bcrypt` = `t`.
+
+Para borrar los datos de prueba:
+
+```bash
+psql -U postgres -h localhost -p 5434 -d super-inter \
+  -c "BEGIN;" \
+  -c "DELETE FROM usuarios WHERE correo LIKE 'test-%';" \
+  -c "DELETE FROM proveedores WHERE nombre LIKE 'TEST-%';" \
+  -c "COMMIT;"
+```
+
+### Pendientes
+
+- **Proteger los demás módulos con el token:** hoy solo `/api/auth/perfil` lo exige. La API de productos, las JSP y los demás endpoints siguen siendo públicos.
+- **Pantalla de inicio de sesión** en el front-end en React y en las JSP.
+- **Gestión de usuarios y roles por el administrador (HU4):** consultar usuarios y cambiar su rol. Requerirá una migración con permiso `UPDATE` sobre `usuarios`.
+- **Token inválido en rutas públicas:** si una petición a una ruta pública trae `Authorization: Bearer` con un token inválido, Spring Security responde `401`. Es el comportamiento normal del resource server; hay que tenerlo en cuenta cuando el front-end empiece a enviar el token.
+
 ## Uso de JDBC
 
-El proyecto **no usa JPA ni Hibernate**. Todas las operaciones SQL están escritas a mano con la API estándar de JDBC en `JdbcProductoRepository`, `JdbcCategoriaRepository` y `JdbcProveedorRepository`. Spring Boot solo administra el pool de conexiones (`DataSource`).
+El proyecto **no usa JPA ni Hibernate**. Todas las operaciones SQL están escritas a mano con la API estándar de JDBC en `JdbcProductoRepository`, `JdbcCategoriaRepository`, `JdbcProveedorRepository` y `JdbcUsuarioRepository`. Spring Boot solo administra el pool de conexiones (`DataSource`).
 
 | Operación | Método | Sentencia | API JDBC |
 |---|---|---|---|
@@ -262,12 +599,14 @@ El proyecto **no usa JPA ni Hibernate**. Todas las operaciones SQL están escrit
 
 ## Trazabilidad con los artefactos del proyecto
 
+Los números de requisito dependen del documento: el documento de especificación de requerimientos (GA1-220501093-AA4-EV02) y el documento de historias de usuario (GA2-220501093-AA1-EV03) numeran sus RF de forma distinta. Por eso RF-04 aparece en productos y en proveedores con significados diferentes; cuando hace falta, la tabla indica de qué documento sale el requisito.
+
 ### Módulo de productos
 
 | Artefacto | Aplicación |
 |---|---|
 | RF-01 (registro de productos con código, nombre, categoría, fecha de vencimiento y cantidad) | Formulario web, `Producto` y `ProductoRequest` |
-| RF-04 (consultar el inventario disponible) | Listado web y `GET /api/productos` |
+| RF-04 del documento de especificación de requerimientos, GA1-220501093-AA4-EV02 (consultar el inventario disponible en tiempo real) | Listado web y `GET /api/productos` |
 | RF-25 (filtrar y buscar información por categoría) | Búsqueda por nombre y filtro por categoría |
 | Regla de negocio 1 (el SKU no puede repetirse) | `ProductoService` y restricción `uq_productos_codigo` |
 | Modelo lógico (GA4-220501095-AA1-EV01) | Tablas `productos` y `categorias` |
@@ -279,8 +618,8 @@ El proyecto **no usa JPA ni Hibernate**. Todas las operaciones SQL están escrit
 
 | Artefacto | Aplicación |
 |---|---|
-| RF-04 (gestionar proveedores: crear, editar y consultar) | Listado, formulario de registro y de edición, `ProveedorService` |
-| RF-15 (información de contacto del proveedor) | Campos contacto, teléfono y correo |
+| RF-04 del documento de historias de usuario, GA2-220501093-AA1-EV03 (gestionar proveedores: crear, editar y consultar) | Listado, formulario de registro y de edición, `ProveedorService` |
+| RF-15 del documento de especificación de requerimientos, GA1-220501093-AA4-EV02 (información de contacto del proveedor) | Campos contacto, teléfono y correo |
 | Modelo lógico (GA4-220501095-AA1-EV01) | Tabla `proveedores` y su relación con `compras` |
 | Diagrama de clases (GA4-220501095-AA2-EV04) | Entidad `Proveedor` |
 | Historia de usuario HU2 | Depende de que existan proveedores registrados |
@@ -299,6 +638,21 @@ El proyecto **no usa JPA ni Hibernate**. Todas las operaciones SQL están escrit
 
 La consulta del inventario disponible se implementa en `/productos` (`ProductoListaPage`).
 
+### Servicio web de autenticación (AA5-EV01)
+
+| Artefacto | Aplicación |
+|---|---|
+| RF-17 del documento de especificación de requerimientos, GA1-220501093-AA4-EV02 (creación de usuarios con roles y permisos específicos) | `POST /api/auth/registro`, `UsuarioService` y enum `Rol` |
+| RNF-01 (autenticación mediante usuario y contraseña) | `POST /api/auth/login` y `AutenticacionService` |
+| RNF-02 (permisos basados en roles) | El token lleva el claim `rol`, convertido en la autoridad `ROLE_<rol>` |
+| RNF-03 (información sensible almacenada en la base de datos) | Contraseñas cifradas con BCrypt; nunca se devuelven ni se registran |
+| RNF-04 (log interno de actividades importantes) | Registro de usuarios e inicios de sesión exitosos y fallidos con `@Slf4j` |
+| Regla de negocio 3 (solo el administrador modifica parámetros) | El registro público no deja elegir el rol: siempre asigna `CAJERO` |
+| Clases y características de usuarios | Roles `ADMINISTRADOR`, `GERENTE`, `AUXILIAR_INVENTARIOS`, `CAJERO` y `COMPRAS`, con su nombre visible |
+| HU4 "Administrar usuarios" (GA2-220501093-AA1-EV03) | Crear usuario y asignar rol. La gestión de roles por el administrador queda para una evidencia futura |
+| Modelo conceptual y lógico | Entidad USUARIO: `id_usuario`, `nombre`, `correo`, `contrasena`, `rol` |
+| Diagrama de clases (GA4-220501095-AA2-EV04) | Clase `Usuario`; su operación `iniciarSesion()` está en `AutenticacionService.iniciarSesion` |
+
 ### Ajustes justificados
 
 - **Columna `codigo`:** RF-01 y la regla de negocio 1 exigen un código único que el modelo lógico no incluía. Se agregó con restricción `UNIQUE` (`database/migrations/001_ajustes_modulo_productos.sql`).
@@ -307,11 +661,16 @@ La consulta del inventario disponible se implementa en `/productos` (`ProductoLi
 - **Menú, encabezado y pie:** en el prototipo se generaban con JavaScript. En el módulo web se generan en el servidor con `<jsp:include>`. El menú muestra solo los módulos implementados.
 - **Correo del proveedor:** no estaba en el modelo lógico. Se agregó como campo opcional para completar la información de contacto (RF-15).
 - **Nombre de proveedor único:** el modelo lógico no lo exigía. Se agregó para evitar registros duplicados del mismo proveedor, sin distinguir mayúsculas.
-- **Eliminación de proveedores:** RF-04 y el diagrama de clases solo indican crear, editar y consultar. Se agregó la eliminación para completar el CRUD; la base de datos impide eliminar un proveedor con compras registradas.
+- **Eliminación de proveedores:** RF-04 del documento de historias de usuario y el diagrama de clases solo indican crear, editar y consultar. Se agregó la eliminación para completar el CRUD; la base de datos impide eliminar un proveedor con compras registradas.
 - **NIT y estado del prototipo:** la pantalla de proveedores del prototipo los mostraba, pero no existen en el modelo lógico. No se incluyeron.
 - **Filtrado en el navegador (front-end React):** `GET /api/productos` no recibe parámetros de búsqueda. Para no modificar el contrato de la API, el front-end carga la lista una vez y filtra en el navegador por nombre (sin distinguir mayúsculas) y por categoría, mientras el usuario escribe.
 - **Eliminación con ventana modal (front-end React):** el módulo JSP usa una pantalla de confirmación porque los formularios HTML necesitan una petición GET para mostrarla. En la SPA la confirmación se muestra en una ventana modal del prototipo (`.modal`) sobre el listado, sin cambiar de página.
 - **Corrección del CSS del botón ☰ (front-end React):** en el prototipo, `.btn { display: inline-flex }` se carga después de `.app-header__menu-toggle { display: none }` y lo deja visible en escritorio. En la copia de `frontend/src/styles/` el selector se cambió a `.app-header .app-header__menu-toggle`, que tiene más especificidad. Los CSS de `src/main/resources/static/` no se modificaron.
+- **El correo como nombre de usuario (AA5-EV01):** el modelo lógico no tiene un campo "usuario". Se usa el correo, que ya era único, normalizado sin espacios y en minúsculas.
+- **`iniciarSesion()` en un servicio (AA5-EV01):** el diagrama de clases pone la operación en la clase `Usuario`. Se implementó en `AutenticacionService`, porque necesita el repositorio, el cifrado y el token; así `Usuario` sigue siendo un objeto de datos inmutable.
+- **Función de limpieza para las pruebas (AA5-EV01):** la aplicación no tiene permiso `DELETE` sobre `usuarios`, por mínimo privilegio. Para que las pruebas limpien sus datos se agregó `eliminar_usuarios_de_prueba()` (migración 004), que solo borra correos `test-%`.
+- **Límite de 72 bytes también en el login (AA5-EV01):** no estaba en el diseño inicial. Se agregó porque BCrypt ignora lo que pase de 72 bytes al comparar, y sin el control se aceptaría una contraseña de 72 bytes con cualquier texto agregado.
+- **Hash fijo calculado al arrancar (AA5-EV01):** en lugar de escribir un hash en el código, se genera uno al crear `AutenticacionService` con el mismo `PasswordEncoder`, para que tenga siempre el mismo costo que los hashes reales.
 
 ## Estructura del proyecto
 
@@ -320,6 +679,7 @@ src/main/java/com/superinter/
 ├── SuperInterApplication.java
 ├── common/
 │   ├── exception/           Excepciones de la aplicación y manejador de la API REST
+│   ├── security/            Spring Security, JWT y respuestas 401/403 (AA5-EV01)
 │   └── web/                 Utilidades comunes de los servlets
 ├── categoria/               Módulo de categorías (solo lectura)
 │   ├── domain/  repository/  dto/  service/  controller/
@@ -327,9 +687,12 @@ src/main/java/com/superinter/
 │   ├── domain/  repository/  dto/  service/
 │   ├── controller/          API REST (AA2-EV01)
 │   └── web/                 Servlets y modelo del formulario (AA2-EV02)
-└── proveedor/               Módulo de proveedores (AA3-EV01)
+├── proveedor/               Módulo de proveedores (AA3-EV01)
+│   ├── domain/  repository/  dto/  service/
+│   └── web/                 Servlets
+└── usuario/                 Registro e inicio de sesión (AA5-EV01)
     ├── domain/  repository/  dto/  service/
-    └── web/                 Servlets
+    └── controller/          API REST /api/auth
 
 src/main/webapp/WEB-INF/jsp/
 ├── fragmentos/              head, sidebar, header y footer compartidos
@@ -345,6 +708,8 @@ database/
 ├── data.sql                 Categorías iniciales
 ├── usuario_aplicacion.sql   Usuario de la aplicación con mínimo privilegio
 └── migrations/              Historial de cambios sobre la base de datos
+
+docs/postman/                Colección de Postman del servicio de autenticación (AA5-EV01)
 
 frontend/                    Front-end en React del módulo de productos (AA4-EV03)
 ├── package.json             Dependencias y scripts (dev, build, lint, format, test)
@@ -380,7 +745,7 @@ Cada módulo se organiza por capas (`domain`, `repository`, `dto`, `service`, `w
 
 - Los commits siguen **Conventional Commits** en español (`feat(proveedor): ...`, `test(proveedor): ...`, `fix(proveedor): ...`).
 - Cada funcionalidad se desarrolla en una rama (`feat/modulo-proveedores`) y se integra a `main` mediante un Pull Request con merge commit.
-- Cada evidencia entregada se marca con una etiqueta de versión (`v1.0.0`, `v2.0.0`, `v3.0.0`, `v4.0.0`).
+- Cada evidencia entregada se marca con una etiqueta de versión (`v1.0.0`, `v2.0.0`, `v3.0.0`, `v4.0.0`, `v5.0.0`).
 - Los cambios en la base de datos se registran como migraciones numeradas. Una migración aplicada no se modifica.
 - El archivo `.env` con las credenciales está excluido del repositorio; `.env.example` sirve de plantilla.
 
@@ -425,7 +790,11 @@ cp .env.example .env
 DB_URL=jdbc:postgresql://localhost:5432/super-inter
 DB_USERNAME=super_inter_app
 DB_PASSWORD=la_contrasena_definida
+JWT_SECRET=salida_de_openssl_rand_base64_32
+JWT_EXPIRACION=60m
 ```
+
+`JWT_SECRET` se genera con `openssl rand -base64 32` (funciona en Git Bash). Sin un `JWT_SECRET` válido la aplicación no arranca; ver [Configuración del secreto JWT](#configuración-del-secreto-jwt).
 
 El archivo `.env` está excluido del repositorio.
 
@@ -438,6 +807,7 @@ El archivo `.env` está excluido del repositorio.
 - **Productos:** http://localhost:8080/productos
 - **Proveedores:** http://localhost:8080/proveedores
 - **API REST:** http://localhost:8080/api/productos
+- **Servicio de autenticación:** http://localhost:8080/api/auth (ver [Servicio web de autenticación](#servicio-web-de-autenticación-aa5-ev01))
 - **Front-end en React:** http://localhost:5173, después de `npm install` y `npm run dev` en `frontend/` (ver [Front-end en React](#front-end-en-react-aa4-ev03))
 
 ## API REST de productos (AA2-EV01)
@@ -465,7 +835,7 @@ curl -i -X POST http://localhost:8080/api/productos \
 ./mvnw clean test
 ```
 
-104 pruebas automatizadas, 47 de ellas del módulo de proveedores:
+154 pruebas automatizadas: 47 del módulo de proveedores y 50 del servicio de autenticación (detalladas en [Pruebas automáticas](#pruebas-automáticas)). Por tipo:
 
 | Tipo | Qué verifica | Requiere BD |
 |---|---|---|
@@ -473,8 +843,10 @@ curl -i -X POST http://localhost:8080/api/productos \
 | Integración web | La aplicación completa con Tomcat: generación de las JSP y registro desde el formulario hasta PostgreSQL | Sí |
 | Unitarias de servicios y validaciones | Reglas de negocio, validaciones de la solicitud y manejo de errores de la API. Los servicios se prueban con repositorios en memoria | No |
 | Integración de repositorios | Operaciones JDBC contra PostgreSQL, incluidas las restricciones de nombre único | Sí |
+| Seguridad y tokens | Cifrado de contraseñas, emisión y validación del JWT, y respuestas `401` y `403` | No |
+| Integración de autenticación | Registro, login y perfil con peticiones HTTP reales, y regresión de la API, las JSP y sus formularios sin token | Sí |
 
-Los datos de prueba usan el prefijo `TEST-` y se eliminan al terminar.
+Los datos de prueba usan el prefijo `TEST-` (los correos, `test-`) y se eliminan al terminar. Las pruebas necesitan el archivo `.env` con las variables de la base de datos y `JWT_SECRET`.
 
 El front-end tiene 67 pruebas propias (`cd frontend && npm test`), descritas en [Front-end en React](#front-end-en-react-aa4-ev03).
 
