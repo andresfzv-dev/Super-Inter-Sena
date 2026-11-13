@@ -40,8 +40,12 @@ public class SeguridadConfig {
 
     private static final MacAlgorithm ALGORITMO_FIRMA = MacAlgorithm.HS256;
 
+    /** Único endpoint protegido en esta evidencia: demuestra el uso del token. */
+    public static final String RUTA_PERFIL = "/api/auth/perfil";
+
     @Bean
-    public SecurityFilterChain cadenaDeSeguridad(HttpSecurity http) throws Exception {
+    public SecurityFilterChain cadenaDeSeguridad(HttpSecurity http,
+                                                 RespuestaErrorSeguridad respuestaError) throws Exception {
         http
                 // CSRF se desactiva porque la autenticación no usa cookies ni sesión: el token
                 // viaja en la cabecera Authorization, que un sitio externo no puede agregar a
@@ -56,11 +60,22 @@ public class SeguridadConfig {
                 // básica de Spring Security abrirían otra forma de entrar que no se usa.
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
-                // Por ahora todo es público para no romper las JSP ni el front-end en React,
-                // que aún no tienen pantalla de inicio de sesión.
-                .authorizeHttpRequests(autorizacion -> autorizacion.anyRequest().permitAll())
+                // Solo el perfil exige token. Lo demás sigue público para no romper las JSP ni
+                // el front-end en React, que aún no tienen pantalla de inicio de sesión;
+                // proteger los demás módulos queda pendiente para una evidencia futura.
+                .authorizeHttpRequests(autorizacion -> autorizacion
+                        .requestMatchers(RUTA_PERFIL).authenticated()
+                        .anyRequest().permitAll())
+                // El 401 y el 403 se responden en JSON (ProblemDetail) y no con un cuerpo vacío.
+                // Se configuran en los dos lugares: exceptionHandling atiende las peticiones
+                // sin token y oauth2ResourceServer las que traen un token inválido o vencido.
+                .exceptionHandling(excepciones -> excepciones
+                        .authenticationEntryPoint(respuestaError)
+                        .accessDeniedHandler(respuestaError))
                 .oauth2ResourceServer(servidorRecursos -> servidorRecursos
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(convertidorAutenticacion())));
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(convertidorAutenticacion()))
+                        .authenticationEntryPoint(respuestaError)
+                        .accessDeniedHandler(respuestaError));
         return http.build();
     }
 

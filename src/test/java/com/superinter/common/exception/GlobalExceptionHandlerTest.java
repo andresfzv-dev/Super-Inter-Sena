@@ -6,6 +6,9 @@ import java.sql.SQLException;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ProblemDetail;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.InsufficientAuthenticationException;
+import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 
 class GlobalExceptionHandlerTest {
 
@@ -27,6 +30,45 @@ class GlobalExceptionHandlerTest {
 
         assertThat(problema.getStatus()).isEqualTo(409);
         assertThat(problema.getDetail()).isEqualTo("Ya existe un producto con el código 7701234567890");
+    }
+
+    @Test
+    void credencialesInvalidasRespondeUnauthorizedConMensajeGenerico() {
+        ProblemDetail problema = manejador.manejarCredencialesInvalidas(new CredencialesInvalidasException());
+
+        assertThat(problema.getStatus()).isEqualTo(401);
+        assertThat(problema.getTitle()).isEqualTo("Error en la autenticación");
+        assertThat(problema.getDetail()).isEqualTo("Correo o contraseña incorrectos");
+    }
+
+    @Test
+    void peticionSinTokenRespondeUnauthorizedPidiendoElToken() {
+        ProblemDetail problema = manejador.manejarNoAutenticado(
+                new InsufficientAuthenticationException("Full authentication is required"));
+
+        assertThat(problema.getStatus()).isEqualTo(401);
+        assertThat(problema.getTitle()).isEqualTo("No autenticado");
+        assertThat(problema.getDetail()).startsWith("Se requiere un token de acceso");
+    }
+
+    @Test
+    void tokenInvalidoRespondeUnauthorizedSinExponerElMotivoTecnico() {
+        ProblemDetail problema = manejador.manejarNoAutenticado(
+                new InvalidBearerTokenException("Jwt expired at 2026-01-01T00:00:00Z"));
+
+        assertThat(problema.getStatus()).isEqualTo(401);
+        assertThat(problema.getTitle()).isEqualTo("No autenticado");
+        assertThat(problema.getDetail())
+                .startsWith("El token de acceso no es válido o está vencido")
+                .doesNotContain("Jwt expired");
+    }
+
+    @Test
+    void accesoDenegadoRespondeForbidden() {
+        ProblemDetail problema = manejador.manejarAccesoDenegado(new AccessDeniedException("Access Denied"));
+
+        assertThat(problema.getStatus()).isEqualTo(403);
+        assertThat(problema.getTitle()).isEqualTo("Acceso denegado");
     }
 
     @Test
