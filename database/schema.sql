@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict oaGYoOlVt4pPZceXWb6fO246tG0RkMRHPHwWFufnChHeUUzFNAz2lghXNVB0TCm
+\restrict Riwh0eW6lhuun9iJY4jUW0fD2gP2pt4tEi1opsdxh34gTSgk1hZ1YMsx7CWd66t
 
 -- Dumped from database version 16.15
 -- Dumped by pg_dump version 16.15
@@ -17,6 +17,32 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+
+--
+-- Name: eliminar_usuarios_de_prueba(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.eliminar_usuarios_de_prueba() RETURNS integer
+    LANGUAGE sql SECURITY DEFINER
+    SET search_path TO 'public', 'pg_temp'
+    AS $$
+    WITH eliminados AS (
+        -- El filtro está fijo en la función y no se recibe como parámetro, para que no
+        -- pueda usarse para borrar usuarios reales.
+        DELETE FROM usuarios
+        WHERE correo LIKE 'test-%'
+        RETURNING 1
+    )
+    SELECT count(*)::integer FROM eliminados;
+$$;
+
+
+--
+-- Name: FUNCTION eliminar_usuarios_de_prueba(); Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON FUNCTION public.eliminar_usuarios_de_prueba() IS 'Borra los usuarios creados por las pruebas automáticas (correo LIKE ''test-%''). Solo la usan las pruebas; el código de la aplicación no la llama.';
+
 
 SET default_tablespace = '';
 
@@ -510,5 +536,5 @@ ALTER TABLE ONLY public.ventas
 -- PostgreSQL database dump complete
 --
 
-\unrestrict oaGYoOlVt4pPZceXWb6fO246tG0RkMRHPHwWFufnChHeUUzFNAz2lghXNVB0TCm
+\unrestrict Riwh0eW6lhuun9iJY4jUW0fD2gP2pt4tEi1opsdxh34gTSgk1hZ1YMsx7CWd66t
 
