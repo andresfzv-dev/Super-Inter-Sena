@@ -1,13 +1,111 @@
-Evidencia GA7-220501096-AA4-EV03 - Componente front-end del proyecto formativo y proyectos de clase
+Evidencia GA7-220501096-AA5-EV01 - Diseño y desarrollo de servicios web - caso
 Aprendiz: Andrés Felipe Zambrano Velasquez
 
 Repositorio del proyecto:
 https://github.com/andresfzv-dev/Super-Inter-Sena
 
-Versión entregada: v4.0.0
-Módulo codificado: front-end en React del módulo de productos (carpeta frontend/)
+Versión entregada: v5.0.0
+Módulo codificado: servicio web de registro e inicio de sesión (API REST con JWT)
 
 Versiones anteriores:
 - v1.0.0: evidencia GA7-220501096-AA2-EV01
 - v2.0.0: evidencia GA7-220501096-AA2-EV02
 - v3.0.0: evidencia GA7-220501096-AA3-EV01
+- v4.0.0: evidencia GA7-220501096-AA4-EV03
+
+
+ENDPOINTS
+---------
+POST /api/auth/registro   Público    201, 400, 409
+POST /api/auth/login      Público    200 "Autenticación satisfactoria" + token
+                                     401 "Error en la autenticación"
+GET  /api/auth/perfil     Token      200, 401 (cabecera Authorization: Bearer <token>)
+
+Documentación completa en README.md, sección "Servicio web de autenticación (AA5-EV01)".
+Colección de Postman: docs/postman/Super-Inter-Autenticacion.postman_collection.json
+
+
+ANTES DE PROBAR
+---------------
+1. Aplicar las migraciones 003 y 004 de database/migrations (o crear la base con
+   database/schema.sql y database/usuario_aplicacion.sql).
+2. En el archivo .env agregar:
+     JWT_SECRET=<salida de: openssl rand -base64 32>
+     JWT_EXPIRACION=60m
+3. Iniciar el backend: ./mvnw spring-boot:run
+
+
+PRUEBAS MANUALES (Git Bash)
+---------------------------
+1. Registro correcto. Esperado: 201, rol CAJERO, sin contraseña en la respuesta.
+   curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8080/api/auth/registro \
+     -H "Content-Type: application/json" \
+     -d '{"nombre":"Usuario Manual","correo":"test-manual@ejemplo.com","contrasena":"Clave-Segura-2026"}'
+
+2. Registro con el mismo correo en mayúsculas. Esperado: 409.
+   curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8080/api/auth/registro \
+     -H "Content-Type: application/json" \
+     -d '{"nombre":"Otro","correo":"TEST-MANUAL@EJEMPLO.COM","contrasena":"Clave-Segura-2026"}'
+
+3. Registro con datos inválidos. Esperado: 400 con errores en nombre, correo y contrasena.
+   curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8080/api/auth/registro \
+     -H "Content-Type: application/json" \
+     -d '{"nombre":"","correo":"sin-arroba","contrasena":"1234567"}'
+
+4. Login correcto. Esperado: 200, "Autenticación satisfactoria" y token.
+   curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8080/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"correo":"test-manual@ejemplo.com","contrasena":"Clave-Segura-2026"}'
+
+   Guardar el token en una variable para las pruebas 8 y 9:
+   TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"correo":"test-manual@ejemplo.com","contrasena":"Clave-Segura-2026"}' \
+     | sed -E 's/.*"token":"([^"]+)".*/\1/')
+   echo "Longitud del token: ${#TOKEN}"
+
+5. Login con contraseña incorrecta. Esperado: 401, "Correo o contraseña incorrectos".
+   curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8080/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"correo":"test-manual@ejemplo.com","contrasena":"incorrecta123"}'
+
+6. Login con correo inexistente. Esperado: 401 con el mismo cuerpo de la prueba 5.
+   curl -s -w "\nHTTP %{http_code}\n" -X POST http://localhost:8080/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"correo":"test-no-existe@ejemplo.com","contrasena":"Clave-Segura-2026"}'
+
+7. Perfil sin token. Esperado: 401 "No autenticado" en JSON.
+   curl -s -i http://localhost:8080/api/auth/perfil
+
+8. Perfil con token. Esperado: 200 con idUsuario, nombre, correo y rol.
+   curl -s -w "\nHTTP %{http_code}\n" http://localhost:8080/api/auth/perfil \
+     -H "Authorization: Bearer $TOKEN"
+
+9. Perfil con token alterado. Esperado: 401.
+   FIRMA=${TOKEN##*.}
+   if [ "${FIRMA:0:1}" = "A" ]; then C=B; else C=A; fi
+   ALTERADO="${TOKEN%.*}.${C}${FIRMA:1}"
+   curl -s -w "\nHTTP %{http_code}\n" http://localhost:8080/api/auth/perfil \
+     -H "Authorization: Bearer $ALTERADO"
+
+10. Sin iniciar sesión siguen funcionando:
+    - http://localhost:8080/productos y http://localhost:8080/proveedores (JSP)
+    - el formulario de proveedores (registrar uno con el prefijo TEST-)
+    - el front-end en React: cd frontend && npm run dev
+
+Resultado: las 10 pruebas pasaron.
+
+
+LIMPIEZA (como postgres)
+------------------------
+psql -U postgres -h localhost -p 5434 -d super-inter \
+  -c "BEGIN;" \
+  -c "DELETE FROM usuarios WHERE correo LIKE 'test-%';" \
+  -c "DELETE FROM proveedores WHERE nombre LIKE 'TEST-%';" \
+  -c "COMMIT;"
+
+
+PRUEBAS AUTOMÁTICAS
+-------------------
+Backend:   ./mvnw clean test           -> 154 pruebas, 0 fallos
+Front-end: cd frontend && npm test     -> 67 pruebas, 0 fallos
